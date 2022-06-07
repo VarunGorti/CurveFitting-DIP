@@ -71,10 +71,16 @@ def createCurvesFromFile(filename):
                 y.append(np.array(df[column_selection]))
 
                 cur_s4p_idx += 1
+        
+        for i in range(y[0].shape[0]):
+            for j in range(y[0].shape[1]):
+                val = y[0][i][j]
+                val = val.replace(" ", "").replace("(", "").replace(")", "")
+                y[0][i][j] = complex(val)
 
         y = np.asarray(y, dtype=complex)
 
-        y = np.stack((y.real, y.imag), axis=3)
+        y = np.stack((y.real, y.imag), axis=3).astype(np.float32)
 
         # TODO: messy
         X = to_shape2D(X, (len(X), 9999))
