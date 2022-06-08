@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import json
+from tqdm import tqdm
 
 def to_shape2D(a, shape):
     y_, x_ = shape
@@ -72,13 +73,19 @@ def createCurvesFromFile(filename):
 
                 cur_s4p_idx += 1
         
-        for i in range(y[0].shape[0]):
-            for j in range(y[0].shape[1]):
-                val = y[0][i][j]
-                val = val.replace(" ", "").replace("(", "").replace(")", "")
-                y[0][i][j] = complex(val)
+        for k in range(len(y)):
+            for i in range(y[k].shape[0]):
+                for j in range(y[k].shape[1]):
+                    val = y[k][i][j]
+                    val = val.replace(" ", "").replace("(", "").replace(")", "")
+                    y[k][i][j] = complex(val)
 
-        y = np.asarray(y, dtype=complex)
+        try:
+            y = np.asarray(y, dtype=complex)
+        except:
+            print(len(y))
+            print(y[0][0])
+            raise Exception("Couldn't turn y into an array")
 
         y = np.stack((y.real, y.imag), axis=3).astype(np.float32)
 
@@ -101,8 +108,11 @@ def trim_zeros(arr):
 def build_dataset(firstChip, raw_data_directory):
     X = np.array([], dtype=np.int64).reshape(0, 9999)
     y = np.array([], dtype=np.int64).reshape(0, 9999, 10, 2)
+    
+    file_dirs = os.listdir(raw_data_directory)
+    print(len(file_dirs))
 
-    for filename in os.listdir(raw_data_directory):
+    for i, filename in tqdm(enumerate(file_dirs)):
         cur_X, cur_y = createCurvesFromFile(raw_data_directory + '/' + filename)
         if cur_X is not None and cur_y is not None:
             X = np.concatenate((X, cur_X), axis=0)
