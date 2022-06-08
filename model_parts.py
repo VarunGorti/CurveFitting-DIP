@@ -12,12 +12,11 @@ class DoubleConv(nn.Module):
         if not mid_channels:
             mid_channels = out_channels
         
-        #NOTE: trying new convolution sizes
         self.double_conv = nn.Sequential(
-            nn.Conv1d(in_channels, mid_channels, kernel_size=9, padding=4, bias=False),
+            nn.Conv1d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm1d(mid_channels),
             nn.LeakyReLU(inplace=True),
-            nn.Conv1d(mid_channels, out_channels, kernel_size=9, padding=4, bias=False),
+            nn.Conv1d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True)
         )
@@ -78,7 +77,7 @@ class Up(nn.Module):
         
         # input is [N, C, L]
         diffL = x2.size()[-1] - x1.size()[-1]
-        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2])
+        x1 = F.pad(x1, [diffL // 2, diffL - diffL // 2])
         
         x = torch.cat([x2, x1], dim=1)
         x = self.bn(x)
