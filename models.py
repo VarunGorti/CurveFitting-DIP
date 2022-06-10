@@ -29,16 +29,21 @@ class DCGAN(nn.Module):
         
         num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of upsampling layers
         
-        layers = [Up_NoCat(nz, ngf*num_layers)] #added one manually, so now need -1 upsampling layers
-        for l in range(num_layers - 1):
-            layers.append(Up_NoCat(ngf*(num_layers-l), ngf*(num_layers-l-1)))
+        self.input = OutConv(nz, ngf * (num_layers + 1))
+        
+        layers = []
+        for l in range(num_layers):
+            ch_1 = ngf * (num_layers - l + 1)
+            ch_2 = ngf * (num_layers - l)
+            layers.append(Up_NoCat(ch_1, ch_2))
+        
+        self.conv_net = nn.Sequential(*layers)
+        self.output = OutConv(ngf, nc)
         
         if optimize_z:
             self.z = nn.Parameter(torch.randn((bs, nz, 2)))
         else:
             self.register_buffer('z', torch.randn((bs, nz, 2), requires_grad=False))
-        self.conv_net = nn.Sequential(*layers)
-        self.output = OutConv(ngf, nc)
         
         unpad_num = (2**(num_layers+1)) - output_size
         l_unpad, r_unpad = unpad_num // 2, unpad_num - unpad_num // 2
@@ -48,9 +53,14 @@ class DCGAN(nn.Module):
         self.unpad = lambda x: x[:, :, unpad_idxs]
         
     def forward(self, x):
+        x = self.input(x)
+        
         x = self.conv_net(x)
+        
         x = self.output(x)
+        
         x = nn.Tanh()(x)
+        
         x = self.unpad(x)
 
         return x
@@ -128,31 +138,65 @@ class ENC_DEC(nn.Module):
         """
         super().__init__()
         
+        ###########
+        #  PARAMS #
+        ###########
         self.bs = bs
         self.ngf = ngf
         self.output_size = output_size
         self.nc = nc
         self.optimize_z = optimize_z
         
+        ###########
+        #NET STUFF#
+        ###########
         self.input = DoubleConv(nc, ngf)
         
         num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of downsampling layers
         
+        encoder = []
+        decoder = []
+        for l in range(num_layers):
+            ch_1 = ngf * (l + 1)
+            ch_2 = ngf * (l + 2)
+            encoder.append(Down(ch_1, ch_2))
+            
+            ch_3 = ngf * (num_layers - l + 1)
+            ch_4 = ngf * (num_layers - l)
+            decoder.append(Up_NoCat(ch_3, ch_4))
         
+        self.encoder = nn.Sequential(*encoder)
+        self.decoder = nn.Sequential(*decoder)
         
         self.output = OutConv(ngf, nc)
         
+        ###########
+        #  INPUT  #
+        ###########
+        z_len = 2 ** (num_layers + 1)
         if optimize_z:
-            self.z = nn.Parameter(torch.randn((bs, nc, output_size)))
+            self.z = nn.Parameter(torch.randn((bs, nc, z_len)))
         else:
-            self.register_buffer('z', torch.randn((bs, nc, output_size), requires_grad=False))
+            self.register_buffer('z', torch.randn((bs, nc, z_len), requires_grad=False))
+        
+        ###########
+        #UNPADDING#
+        ###########
+        unpad_num = z_len - output_size
+        l_unpad, r_unpad = unpad_num // 2, unpad_num - unpad_num // 2
+        unpad_idxs = np.arange(2**(num_layers+1))[l_unpad:]
+        unpad_idxs = unpad_idxs[:-r_unpad]
+        
+        self.unpad = lambda x: x[:, :, unpad_idxs]
         
     def forward(self, x):
         x = self.input(x)
-        
+        x = self.encoder(x)
+        x = self.decoder(x)
         x = self.output(x)
         
         x = nn.Tanh()(x)
+        x = self.unpad(x)
         
         return x
     
