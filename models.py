@@ -27,6 +27,11 @@ class DCGAN(nn.Module):
         self.nc = nc
         self.optimize_z = optimize_z
         
+        if optimize_z:
+            self.z = nn.Parameter(torch.randn((bs, nz, 2)))
+        else:
+            self.register_buffer('z', torch.randn((bs, nz, 2), requires_grad=False))
+        
         num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of upsampling layers
         
         self.input = OutConv(nz, ngf * (num_layers + 1))
@@ -40,33 +45,33 @@ class DCGAN(nn.Module):
         self.conv_net = nn.Sequential(*layers)
         self.output = OutConv(ngf, nc)
         
-        if optimize_z:
-            self.z = nn.Parameter(torch.randn((bs, nz, 2)))
-        else:
-            self.register_buffer('z', torch.randn((bs, nz, 2), requires_grad=False))
+#         unpad_num = (2**(num_layers+1)) - output_size
+#         l_unpad, r_unpad = unpad_num // 2, unpad_num - unpad_num // 2
+#         unpad_idxs = np.arange(2**(num_layers+1))[l_unpad:]
+#         unpad_idxs = unpad_idxs[:-r_unpad]
         
-        unpad_num = (2**(num_layers+1)) - output_size
-        l_unpad, r_unpad = unpad_num // 2, unpad_num - unpad_num // 2
-        unpad_idxs = np.arange(2**(num_layers+1))[l_unpad:]
-        unpad_idxs = unpad_idxs[:-r_unpad]
-        
-        self.unpad = lambda x: x[:, :, unpad_idxs]
+#         self.unpad = lambda x: x[:, :, unpad_idxs]
+
+        self.unpad = ResizePool(ngf, ngf, 2**(num_layers+1), output_size)
         
     def forward(self, x):
         x = self.input(x)
-        
         x = self.conv_net(x)
-        
-        x = self.output(x)
-        
-        x = nn.Tanh()(x)
-        
+#         x = self.output(x)
+#         x = nn.Tanh()(x)
+#         x = self.unpad(x)
         x = self.unpad(x)
+        x = self.output(x)
+        x = nn.Tanh()(x)
 
         return x
 
     def forward_with_z(self):
         return self.forward(self.z)
+    
+    @torch.no_grad()
+    def perturb_noise(self, std=0.1):
+        self.z += torch.randn_like(self.z) * std
     
 class UNET(nn.Module):
     def __init__(self, bs, ngf=64, output_size=1024, nc=1, optimize_z=False):

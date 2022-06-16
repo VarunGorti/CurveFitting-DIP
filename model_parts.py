@@ -100,12 +100,46 @@ class Up_NoCat(nn.Module):
         
         return x
 
+class Up_NoCat_Multires(nn.Module):
+    """Upscaling Then double conv with multiple dilation factors"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        
+        self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
+        
+        
+    
+    def forward(self, x):
+        
+        
+        return x
+
 class OutConv(nn.Module):
     """1x1 convolutions to get correct output channels"""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
 
     def forward(self, x):
         return self.conv(x)
+    
+class ResizePool(nn.Module):
+    """
+    Conv --> MaxPool to resize the length --> BN --> LeakyReLU, Then SingleConv
+    """
+    def __init__(self, in_channels, out_channels, in_size, out_size):
+        super().__init__()
+        
+        kernel_size = in_size - out_size + 1
+        
+        self.resize_pool = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.MaxPool1d(kernel_size=kernel_size, stride=1),
+            nn.BatchNorm1d(out_channels),
+            nn.LeakyReLU(inplace=True),
+            SingleConv(out_channels, out_channels)
+        )
+    
+    def forward(self, x):
+        return self.resize_pool(x)
