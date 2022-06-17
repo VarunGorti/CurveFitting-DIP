@@ -100,20 +100,6 @@ class Up_NoCat(nn.Module):
         
         return x
 
-class Up_NoCat_Multires(nn.Module):
-    """Upscaling Then double conv with multiple dilation factors"""
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        
-        self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
-        
-        
-    
-    def forward(self, x):
-        
-        
-        return x
-
 class OutConv(nn.Module):
     """1x1 convolutions to get correct output channels"""
     def __init__(self, in_channels, out_channels):

@@ -144,7 +144,7 @@ class UNET(nn.Module):
         return self.forward(self.z)
         
 class ENC_DEC(nn.Module):
-    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, init_z=None):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False):
         """
         Args:
             bs: the batch size
@@ -166,26 +166,16 @@ class ENC_DEC(nn.Module):
         self.output_size = output_size
         self.nc = nc
         self.optimize_z = optimize_z
-        self.init_z = init_z
         
         num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of upsampling layers
         
         ###########
         #  INPUT  #
         ###########
-        if init_z is not None:
-            if optimize_z:
-                self.z = nn.Parameter(init_z.detach().clone().float())
-            else:
-                self.register_buffer('z', init_z.detach().clone().requires_grad_(False).float())
-                
-            nz = self.z.shape[1]
-            self.nz = nz
+        if optimize_z:
+            self.z = nn.Parameter(torch.randn((bs, nz, 2**(num_layers+1))))
         else:
-            if optimize_z:
-                self.z = nn.Parameter(torch.randn((bs, nz, 2**(num_layers+1))))
-            else:
-                self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
+            self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
         
         ###########
         #NET STUFF#
