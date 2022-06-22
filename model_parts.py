@@ -69,8 +69,6 @@ class Up(nn.Module):
         else:
             self.up = nn.ConvTranspose1d(in_channels, in_channels // 2, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
-        
-        self.bn = nn.BatchNorm1d(in_channels)
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
@@ -80,7 +78,6 @@ class Up(nn.Module):
         x1 = F.pad(x1, [diffL // 2, diffL - diffL // 2])
         
         x = torch.cat([x2, x1], dim=1)
-        x = self.bn(x)
         
         return self.conv(x)
 

@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import math
 
 import torch
 import torch.nn as nn
@@ -86,62 +87,100 @@ class DCGAN(nn.Module):
         self.z += torch.randn_like(self.z) * std
     
 class UNET(nn.Module):
-    def __init__(self, bs, ngf=64, output_size=1024, nc=1, optimize_z=False):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False):
         """
         Args:
             bs: the batch size
+            nz: the channel depth of the initial random seed
             ngf: base number of filters per layer
             output_size: the desired output length
             nc: number of channels in the output
             optimize_z: whether to optimize over the random input to the network
+            init_z: the initial value for the input to the net, if desired
         """
         super().__init__()
         
+        ###########
+        #  PARAMS #
+        ###########
         self.bs = bs
+        self.nz = nz
         self.ngf = ngf
         self.output_size = output_size
         self.nc = nc
         self.optimize_z = optimize_z
         
-        self.input = DoubleConv(nc, ngf)
+        num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of upsampling layers
         
-        self.down1 = Down(ngf, ngf*2)
-        self.down2 = Down(ngf*2, ngf*4)
-        self.down3 = Down(ngf*4, ngf*8)
-        self.down4 = Down(ngf*8, ngf*8)
+        ###########
+        #  INPUT  #
+        ###########
+        if optimize_z:
+            self.z = nn.Parameter(torch.randn((bs, nz, 2**(num_layers+1))))
+        else:
+#             self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
+            a = torch.arange(0, 2**(num_layers+1)) 
+            a = a.unsqueeze(0).unsqueeze(0).repeat(bs, nz, 1)
+            
+            b = torch.arange(0, nz) * math.pi / 2**(num_layers+1)
+            b = b.view(1, -1, 1)
+            
+            z = torch.sin(a * b)
+            self.register_buffer('z', z.clone().requires_grad_(False))
+            
         
-        self.up1 = Up(ngf*16, ngf*4)
-        self.up2 = Up(ngf*8, ngf*2)
-        self.up3 = Up(ngf*4, ngf)
-        self.up4 = Up(ngf*2, ngf)
-        
+        ###########
+        #NET STUFF#
+        ###########
+        self.input = OutConv(nz, ngf)
         self.output = OutConv(ngf, nc)
         
-        if optimize_z:
-            self.z = nn.Parameter(torch.randn((bs, nc, output_size)))
+        self.encoder = []
+        self.decoder = []
+        for l in range(num_layers):
+            ch_1 = ngf * (l + 1)
+            ch_2 = ngf * (l + 2)
+            self.encoder.append(Down(ch_1, ch_2))
+            
+            ch_3 = 2 * ngf * (num_layers - l + 1) - ngf #account for concatenation
+            ch_4 = ngf * (num_layers - l)
+            self.decoder.append(Up(ch_3, ch_4))
+        
+        self.encoder = nn.ModuleList(self.encoder)
+        self.decoder = nn.ModuleList(self.decoder)
+        
+        ###########
+        #UNPADDING#
+        ###########
+        if np.ceil(np.log2(output_size)) == np.floor(np.log2(output_size)):
+            self.unpad = nn.Identity()
         else:
-            self.register_buffer('z', torch.randn((bs, nc, output_size), requires_grad=False))
+            self.unpad = ResizePool(ngf, ngf, 2**(num_layers+1), output_size)
         
     def forward(self, x):
-        x1 = self.input(x)
+        x = self.input(x)
         
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
+        enc_outs = [x]
+        for layer in self.encoder:
+            enc_outs.append(layer(enc_outs[-1]))
         
+        for layer in self.decoder:
+            x = layer(enc_outs[-1], enc_outs[-2])
+            enc_outs = enc_outs[:-2]
+            enc_outs.append(x)
+        
+        x = self.unpad(x)
         x = self.output(x)
-        
         x = nn.Tanh()(x)
         
         return x
     
     def forward_with_z(self):
         return self.forward(self.z)
+    
+    @torch.no_grad()
+    def perturb_noise(self, std=0.1):
+        self.z += torch.randn_like(self.z) * std
         
 class ENC_DEC(nn.Module):
     def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False):
