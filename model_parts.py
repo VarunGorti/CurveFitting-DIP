@@ -126,3 +126,68 @@ class ResizePool(nn.Module):
     
     def forward(self, x):
         return self.resize_pool(x)
+
+class MultiScaleDown(nn.Module):
+    """Version of Down that uses multiple conv kernel sizes"""
+
+    def __init__(self, in_channels, out_channels, num_scales):
+        super().__init__()
+        
+        out_channels = out_channels // num_scales
+        
+        layers = []
+        for scale in range(num_scales):
+            next_layer = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, kernel_size=(2*scale + 3), padding=scale+1, padding_mode='reflect', bias=False),
+                nn.MaxPool1d(2),
+                nn.BatchNorm1d(out_channels),
+                nn.LeakyReLU(inplace=True),
+                nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
+                nn.BatchNorm1d(out_channels),
+                nn.LeakyReLU(inplace=True)
+            )
+            layers.append(next_layer)
+        
+        self.layers = nn.ModuleList(layers)
+
+    def forward(self, x):
+        outputs = []
+        
+        for layer in self.layers:
+            outputs.append(layer(x))
+        
+        return torch.cat(outputs, dim=1)
+
+class MultiScaleUp_NoCat(nn.Module):
+    """Version of Up_NoCat with multiple convolution kernel sizes"""
+
+    def __init__(self, in_channels, out_channels, num_scales):
+        super().__init__()
+
+        self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
+        
+        out_channels = out_channels // num_scales
+        
+        layers = []
+        for scale in range(num_scales):
+            next_layer = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, kernel_size=(2*scale + 3), padding=scale+1, padding_mode='reflect', bias=False),
+                nn.BatchNorm1d(out_channels),
+                nn.LeakyReLU(inplace=True),
+                nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
+                nn.BatchNorm1d(out_channels),
+                nn.LeakyReLU(inplace=True)
+            )
+            layers.append(next_layer)
+        
+        self.layers = nn.ModuleList(layers)
+
+    def forward(self, x):
+        x = self.up(x)
+        
+        outputs = []
+        
+        for layer in self.layers:
+            outputs.append(layer(x))
+        
+        return torch.cat(outputs, dim=1)
