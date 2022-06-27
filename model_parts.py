@@ -13,10 +13,10 @@ class DoubleConv(nn.Module):
             mid_channels = out_channels
         
         self.double_conv = nn.Sequential(
-            nn.Conv1d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv1d(in_channels, mid_channels, kernel_size=3, padding=1, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(mid_channels),
             nn.LeakyReLU(inplace=True),
-            nn.Conv1d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv1d(mid_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True)
         )
@@ -31,7 +31,7 @@ class SingleConv(nn.Module):
         super().__init__()
         
         self.single_conv = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True)
         )
@@ -46,7 +46,7 @@ class Down(nn.Module):
         super().__init__()
         
         self.maxpool_conv = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect', bias=False),
             nn.MaxPool1d(2),
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True),
@@ -117,7 +117,7 @@ class ResizePool(nn.Module):
         kernel_size = in_size - out_size + 1
         
         self.resize_pool = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect', bias=False),
             nn.MaxPool1d(kernel_size=kernel_size, stride=1),
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True),

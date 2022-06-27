@@ -3,7 +3,7 @@ import torch.nn as nn
 import random
 import numpy as np
 
-def get_single_series(data, sample_num, sparam_num, num_chan):
+def get_single_series(data, sample_num, sparam_num, num_chan=2):
     """
     Grabs the Real or (Real, Im) series for a single sample and a single s-parameter.
 

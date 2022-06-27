@@ -118,16 +118,7 @@ class UNET(nn.Module):
         if optimize_z:
             self.z = nn.Parameter(torch.randn((bs, nz, 2**(num_layers+1))))
         else:
-#             self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
-            a = torch.arange(0, 2**(num_layers+1)) 
-            a = a.unsqueeze(0).unsqueeze(0).repeat(bs, nz, 1)
-            
-            b = torch.arange(0, nz) * math.pi / 2**(num_layers+1)
-            b = b.view(1, -1, 1)
-            
-            z = torch.sin(a * b)
-            self.register_buffer('z', z.clone().requires_grad_(False))
-            
+            self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
         
         ###########
         #NET STUFF#
@@ -192,7 +183,6 @@ class ENC_DEC(nn.Module):
             output_size: the desired output length
             nc: number of channels in the output
             optimize_z: whether to optimize over the random input to the network
-            init_z: the initial value for the input to the net, if desired
         """
         super().__init__()
         
@@ -206,15 +196,17 @@ class ENC_DEC(nn.Module):
         self.nc = nc
         self.optimize_z = optimize_z
         
-        num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of upsampling layers
+        #NOTE trying smaller num_layers now! Used to be - 1
+        num_layers = int(np.ceil(np.log2(output_size))) - 3 #number of down/up sampling layers
+        padded_len = 2 ** int(np.ceil(np.log2(output_size)))
         
         ###########
         #  INPUT  #
         ###########
         if optimize_z:
-            self.z = nn.Parameter(torch.randn((bs, nz, 2**(num_layers+1))))
+            self.z = nn.Parameter(torch.randn((bs, nz, padded_len)))
         else:
-            self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
+            self.register_buffer('z', torch.randn((bs, nz, padded_len), requires_grad=False))
         
         ###########
         #NET STUFF#
@@ -242,7 +234,7 @@ class ENC_DEC(nn.Module):
         if np.ceil(np.log2(output_size)) == np.floor(np.log2(output_size)):
             self.unpad = nn.Identity()
         else:
-            self.unpad = ResizePool(ngf, ngf, 2**(num_layers+1), output_size)
+            self.unpad = ResizePool(ngf, ngf, padded_len, output_size)
         
     def forward(self, x):
         x = self.input(x)
@@ -271,7 +263,6 @@ class MULTISCALE_ENC_DEC(nn.Module):
             output_size: the desired output length
             nc: number of channels in the output
             optimize_z: whether to optimize over the random input to the network
-            init_z: the initial value for the input to the net, if desired
         """
         super().__init__()
         
@@ -285,15 +276,17 @@ class MULTISCALE_ENC_DEC(nn.Module):
         self.nc = nc
         self.optimize_z = optimize_z
         
-        num_layers = int(np.ceil(np.log2(output_size))) - 1 #number of upsampling layers
+        #NOTE trying smaller num_layers now! Used to be - 1
+        num_layers = int(np.ceil(np.log2(output_size))) - 3 #number of down/up sampling layers
+        padded_len = 2 ** int(np.ceil(np.log2(output_size)))
         
         ###########
         #  INPUT  #
         ###########
         if optimize_z:
-            self.z = nn.Parameter(torch.randn((bs, nz, 2**(num_layers+1))))
+            self.z = nn.Parameter(torch.randn((bs, nz, padded_len)))
         else:
-            self.register_buffer('z', torch.randn((bs, nz, 2**(num_layers+1)), requires_grad=False))
+            self.register_buffer('z', torch.randn((bs, nz, padded_len), requires_grad=False))
         
         ###########
         #NET STUFF#
@@ -323,7 +316,7 @@ class MULTISCALE_ENC_DEC(nn.Module):
         if np.ceil(np.log2(output_size)) == np.floor(np.log2(output_size)):
             self.unpad = nn.Identity()
         else:
-            self.unpad = ResizePool(ngf, ngf, 2**(num_layers+1), output_size)
+            self.unpad = ResizePool(ngf, ngf, padded_len, output_size)
         
     def forward(self, x):
         x = self.input(x)
