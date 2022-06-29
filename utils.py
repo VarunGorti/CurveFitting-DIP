@@ -2,8 +2,21 @@ import torch
 import torch.nn as nn
 import random
 import numpy as np
+import os
 
-def get_single_series(data, sample_num, sparam_num, num_chan=2):
+def set_all_seeds(seed):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    # Torch RNG
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # Python RNG
+    np.random.seed(seed)
+    random.seed(seed)
+
+    return
+
+def get_single_series(data_path, sample_num, sparam_num, num_chan=2):
     """
     Grabs the Real or (Real, Im) series for a single sample and a single s-parameter.
 
@@ -19,7 +32,7 @@ def get_single_series(data, sample_num, sparam_num, num_chan=2):
     Returns:
         x: Tensor with shape [1, num_chan, L].
     """
-    x = data[sample_num][:, sparam_num, :] #(LEN, 2)
+    x = torch.load(data_path)[sample_num][:, sparam_num, :] #(LEN, 2)
     
     if num_chan == 1:
         x = x[:, 0].unsqueeze(1) #(LEN, 1)

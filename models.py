@@ -334,3 +334,85 @@ class MULTISCALE_ENC_DEC(nn.Module):
     @torch.no_grad()
     def perturb_noise(self, std=0.1):
         self.z += torch.randn_like(self.z) * std
+
+class DILATE_MULTISCALE_ENC_DEC(nn.Module):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False):
+        """
+        Args:
+            bs: the batch size
+            nz: the channel depth of the initial random seed
+            ngf: base number of filters per layer
+            output_size: the desired output length
+            nc: number of channels in the output
+            optimize_z: whether to optimize over the random input to the network
+        """
+        super().__init__()
+        
+        ###########
+        #  PARAMS #
+        ###########
+        self.bs = bs
+        self.nz = nz
+        self.ngf = ngf
+        self.output_size = output_size
+        self.nc = nc
+        self.optimize_z = optimize_z
+        
+        #NOTE trying smaller num_layers now! Used to be - 1
+        num_layers = int(np.ceil(np.log2(output_size))) - 3 #number of down/up sampling layers
+        padded_len = 2 ** int(np.ceil(np.log2(output_size)))
+        
+        ###########
+        #  INPUT  #
+        ###########
+        if optimize_z:
+            self.z = nn.Parameter(torch.randn((bs, nz, padded_len)))
+        else:
+            self.register_buffer('z', torch.randn((bs, nz, padded_len), requires_grad=False))
+        
+        ###########
+        #NET STUFF#
+        ###########
+        self.input = OutConv(nz, ngf)
+        self.output = OutConv(ngf, nc)
+        
+        encoder = []
+        decoder = []
+        for l in range(num_layers):
+            ch_1 = ngf * (l + 1)
+            ch_2 = ngf * (l + 2)
+            num_scales_down = 2 ** int(np.ceil(np.log2(num_layers - l)))
+            encoder.append(Dilate_MultiScale_Block(ch_1, ch_2, num_scales_down, downsample=True))
+            
+            ch_3 = ngf * (num_layers - l + 1)
+            ch_4 = ngf * (num_layers - l)
+            num_scales_up = 2 ** int(np.ceil(np.log2(l + 1)))
+            decoder.append(Dilate_MultiScale_Block(ch_3, ch_4, num_scales_up, downsample=False))
+        
+        self.encoder = nn.Sequential(*encoder)
+        self.decoder = nn.Sequential(*decoder)
+        
+        ###########
+        #UNPADDING#
+        ###########
+        if np.ceil(np.log2(output_size)) == np.floor(np.log2(output_size)):
+            self.unpad = nn.Identity()
+        else:
+            self.unpad = ResizePool(ngf, ngf, padded_len, output_size)
+        
+    def forward(self, x):
+        x = self.input(x)
+        x = self.encoder(x)
+        x = self.decoder(x)
+        x = self.unpad(x)
+        x = self.output(x)
+        x = nn.Tanh()(x)
+        
+        return x
+    
+    def forward_with_z(self):
+        return self.forward(self.z)
+    
+    @torch.no_grad()
+    def perturb_noise(self, std=0.1):
+        self.z += torch.randn_like(self.z) * std

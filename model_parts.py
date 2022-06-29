@@ -191,3 +191,56 @@ class MultiScaleUp_NoCat(nn.Module):
             outputs.append(layer(x))
         
         return torch.cat(outputs, dim=1)
+
+class Dilate_MultiScale_Block(nn.Module):
+    def __init__(self, in_channels, out_channels, num_scales, downsample=False):
+        super().__init__()
+
+        self.downsample = downsample
+        if not downsample:
+            self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
+
+        start_layers = []
+        mid_layers = []
+        for scale in range(num_scales):
+            dilation = scale + 1
+            padding = dilation 
+
+            first_layer = [nn.Conv1d(in_channels, out_channels//num_scales, kernel_size=3, dilation=dilation, padding=padding, padding_mode='reflect', bias=False)]
+            if downsample:
+                first_layer.append(nn.MaxPool1d(2))
+            first_layer.extend([nn.BatchNorm1d(out_channels//num_scales), nn.LeakyReLU(inplace=True)])
+            start_layers.append(nn.Sequential(*first_layer))
+
+            mid_layers.append(nn.Sequential(
+                nn.Conv1d(out_channels, out_channels//num_scales, kernel_size=3, dilation=dilation, padding=padding, padding_mode='reflect', bias=False),
+                nn.BatchNorm1d(out_channels//num_scales),
+                nn.LeakyReLU(inplace=True)
+            ))
+        
+        self.start_layers = nn.ModuleList(start_layers)
+        self.mid_layers = nn.ModuleList(mid_layers)
+
+        self.last_layers = nn.Sequential(
+            nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm1d(out_channels),
+            nn.LeakyReLU(inplace=True)
+        )
+    
+    def forward(self, x):
+        if not self.downsample:
+            x = self.up(x)
+        
+        outputs = []
+        for layer in self.start_layers:
+            outputs.append(layer(x))
+        x = torch.cat(outputs, dim=1)
+
+        outputs = []
+        for layer in self.mid_layers:
+            outputs.append(layer(x))
+        x = torch.cat(outputs, dim=1)
+
+        x = self.last_layers(x)
+
+        return x
