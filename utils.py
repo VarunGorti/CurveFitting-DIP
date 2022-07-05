@@ -150,14 +150,12 @@ class Measurement_MSE_Loss(nn.Module):
         return the mse over the measurements of x vs true measurements y 
     """
 
-    def __init__(self, kept_inds, y):
+    def __init__(self, kept_inds):
         super().__init__()
 
         self.kept_inds = kept_inds
-        self.y = y
-
         self.mse_loss = nn.MSELoss()
     
-    def forward(self, x):
-        return self.mse_loss(x[:, :, self.kept_inds], self.y)
+    def forward(self, x, y):
+        return self.mse_loss(x[:, :, self.kept_inds], y)
 
