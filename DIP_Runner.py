@@ -45,11 +45,12 @@ def run_experiment(data_params, model_params, experiment_params, device):
                     
                     y = torch.clone(x)[:, :, kept_inds]
 
+                    L_PAD, R_PAD = get_paddings(LENGTH)
+                    PADDED_LEN = 2**int(np.ceil(np.log2(LENGTH)))
+                    kept_inds = [k + L_PAD for k in kept_inds]
+
                     x = x.to(device)
                     y = y.to(device)
-
-                    L_PAD, R_PAD = get_paddings(LENGTH)
-                    kept_inds = [k + L_PAD for k in kept_inds]
 
                     if device == 0:
                         tic = time.time()
@@ -58,7 +59,7 @@ def run_experiment(data_params, model_params, experiment_params, device):
                         print("S-PARAM " + str(sparam_idx))
                         print(str(num_meas) + " " + problem_type.upper() + " MEASUREMENTS")
 
-                    outputs, train_losses = run_dip(y=y, device=device, kept_inds=kept_inds, model_params=model_params, output_size=LENGTH)
+                    outputs, train_losses = run_dip(y=y, device=device, kept_inds=kept_inds, model_params=model_params, output_size=PADDED_LEN)
 
                     if device == 0:
                         toc = time.time()
@@ -66,11 +67,27 @@ def run_experiment(data_params, model_params, experiment_params, device):
                         print("TIME: ", str(toc - tic))
                         print()
                     
-                    outputs = torch.cat(outputs, dim=0)
+                    outputs = torch.cat(outputs, dim=0)[..., L_PAD:-R_PAD]
 
+                    #Calculate metrics
                     
 
 def run_dip(y, device, kept_inds, model_params, output_size):
+    """
+    Runs a single Deep Image Prior fit.
+
+    Args:
+        y: Observations. Torch tensor [1, 2, m] on device.
+        device: CUDA device number. int.
+        kept_inds: Indices of kept observations. List with length m.
+        model_params: Model and training specifications. Namespace.
+        output_size: The desired length of the output from DIP. int.
+    
+    Returns:
+        outputs: All the intermediate DIP outputs. List with length model_params.num_iter, each element is Torch tensor [1, 2, output_size] on device.
+        train_losses: The intermediate training losses. List with length model_params.num_iter.
+    """
+
     if model_params.net_type == "ENC_DEC":
         net = ENC_DEC(bs=1, nz=model_params.nz, ngf=model_params.ngf, output_size=output_size, nc=2)
     else
@@ -99,7 +116,7 @@ def run_dip(y, device, kept_inds, model_params, output_size):
         optim.step()
 
         with torch.no_grad():
-            outputs.append(out.detach().clone().cpu())
+            outputs.append(out.detach().clone())
             train_losses.append(train_loss.item())
     
     return outputs, train_losses
