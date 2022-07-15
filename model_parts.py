@@ -52,7 +52,7 @@ class Down(nn.Module):
         
         self.maxpool_conv = nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-            nn.MaxPool1d(2),
+            nn.AvgPool1d(2), #NOTE changed from max!
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True),
             SingleConv(out_channels, out_channels, kernel_size=kernel_size)

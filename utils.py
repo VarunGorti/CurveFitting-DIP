@@ -21,8 +21,8 @@ def get_single_series(data_path, sample_num, sparam_num, num_chan=2):
     Grabs the Real or (Real, Im) series for a single sample and a single s-parameter.
 
     Args:
-        data: Array filled with individual chip tensors.
-              Array with tensors of shape [L, 10, 2] (samples, S-Params, real/im).
+        data_path: Array filled with individual chip tensors.
+                   Array with tensors of shape [L, 10, 2] (samples, S-Params, real/im).
         sample_num: Chip number to get.  
                     Int <= len(data).
         sparam_num: S-parameter number to grab for the given chip.
