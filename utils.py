@@ -62,6 +62,7 @@ def get_inds(problem_type, length, num_kept_samples):
     """
     if isinstance(num_kept_samples, float) and num_kept_samples <= 1.0:
         num_kept_samples = int(length * num_kept_samples)
+        num_kept_samples = max(num_kept_samples, 1)
 
     if problem_type=="random":
         kept_inds = np.random.choice(length, num_kept_samples, replace=False)

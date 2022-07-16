@@ -198,8 +198,10 @@ class ENC_DEC(nn.Module):
         ###########
         #NET STUFF#
         ###########
-        self.input = OutConv(nz, ngf)
-        self.output = OutConv(ngf, nc)
+        # self.input = OutConv(nz, ngf)
+        # self.output = OutConv(ngf, nc)
+        self.input = nn.Conv1d(nz, ngf, kernel_size=3, padding=1, padding_mode='reflect', bias=False)
+        self.output = nn.Conv1d(ngf, nc, kernel_size=3, padding=1, padding_mode='reflect', bias=False)
         
         encoder = []
         decoder = []
