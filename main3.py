@@ -24,7 +24,7 @@ def dict2namespace(config):
 
 def main():
     data_params = {
-        "chips": [c for c in range(10, 62) if c != 22],
+        "chips": [5, 15, 25, 35, 45, 55],
         "problem_type": "equal",
         "num_meas": [0.01, 0.02, 0.05, 0.1]
     }
@@ -34,12 +34,12 @@ def main():
         "lr": 1e-3,
         "num_iter": 10000,
         "nz": 2,
-        "ngf": 64
+        "ngf": 128
     }
 
     experiment_params = {
         "save_path": "/scratch/04703/sravula/dip_results",
-        "exp_name": "run_1",
+        "exp_name": "run_2",
         "data_path": "/scratch/04703/sravula/UTAFSDataNew/NEW_DATA.pt"
     }
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A 'IFML'
-#SBATCH -o 'DIP1'
+#SBATCH -o 'DIP3'
 #SBATCH -p 'v100'
-#SBATCH -J 'DIP1'
+#SBATCH -J 'DIP3'
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH -t 48:00:00
@@ -16,4 +16,4 @@ cd /scratch/04703/sravula/CurveFitting-DIP
 module load conda
 conda activate score2
 
-srun python3 main.py
+srun python3 main3.py
