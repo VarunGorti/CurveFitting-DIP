@@ -145,6 +145,143 @@ def get_paddings(in_len):
 
     return L_PAD, R_PAD
 
+def grab_chip_data(root_pth, chip_num):
+    """
+    Given a root path and a chip number, grab all the relevant info for a chip.
+    
+    Args:
+        root_pth: Root of the folder containing chip info.
+        chip_num: Chip number.
+    
+    Returns:
+        out_dict: Dictionary with all relevant chip data.
+                  Entries:
+                      "gt_freqs": Ground truth frequencies.
+                                  (1D numpy array).
+                      "gt_matrix": Ground truth S-param matrix. 
+                                  (4D numpy array) - Axes are [Freq, In_port, Out_port, Re/Im].
+                      "vf_matrix": VF interpolation given samples.
+                                   (4D numpy array).
+                      "y_freqs": Observed sample frequencies chosen by VF.
+                                 (1D numpy array).
+                      "y_matrix": Ground truth matrix sampled at the observed frequencies.
+                                  (4D numpy array).
+    """
+    from skrf import Network, Frequency
+    
+    #Grab the correct folder
+    chip_num = str(chip_num) if chip_num > 9 else "0" + str(chip_num)
+    fname = os.path.join(root_pth, "case"+chip_num)
+    
+    def grab_network_info(folder_pth, net_str):
+        """
+        Helper function that takes a string, searches a given folder for touchstone 
+            files matching the string, grabs the S-param and frequency data, and 
+            formats and returns the S-param matrix and the corresponding frequencies.
+        """
+        
+        #grab the correct file we want
+        children = os.listdir(folder_pth)
+        children = [f for f in children if net_str in f]
+        
+        #there should only be a single file with the given string
+        if len(children) > 1:
+             return None, None
+        else:
+            children = children[0]
+        
+        #grab the actual network stuff now
+        data_path = os.path.join(folder_pth, children)
+        
+        out_network = Network(data_path)
+        
+        out_matrix_re = out_network.s.real.astype(np.float32)
+        out_matrix_im = out_network.s.imag.astype(np.float32)
+        out_matrix = np.stack((out_matrix_re, out_matrix_im), axis=-1)
+
+        out_freqs = out_network.f.astype(np.float32).squeeze()
+        
+        return out_matrix, out_freqs
+    
+    #now make the proper filename strings and grab the gt, VF, and y data
+    gt_str = str(chip_num) + ".s"
+    vf_str = str(chip_num) + ".HLAS.s"
+    y_str = "SIEMENS_AFS_SAMPLE_POINT_SIMULATIONS.s"
+
+    gt_matrix, gt_freqs = grab_network_info(fname, gt_str)
+    vf_matrix, _ = grab_network_info(fname, vf_str)
+    y_matrix, y_freqs = grab_network_info(fname, y_str)
+
+    out_dict = {"gt_matrix": gt_matrix,
+                "gt_freqs": gt_freqs,
+                "vf_matrix": vf_matrix,
+                "y_matrix": y_matrix,
+                "y_freqs": y_freqs}
+            
+    return out_dict
+
+def frequencies_to_samples(gt_freqs, y_freqs):
+    """
+    Takes ground truth and observed frequency values and returns the corresponding list
+        of sampled indices.
+
+    Args:
+        gt_freqs: Array of the ground truth frequency values that data is sampled at. 
+        y_freqs: Array of frequencies where we have observed samples from the true signal.
+
+    Returns:
+        kept_inds: Array of the sample indices that are kept based on elements of gt_freqs
+                            that are observed in y_freqs.
+        A: Forward operator for the inpainting problem based on kept_inds. 
+           2D array with a subset of the rows from the identity matrix. 
+    """
+
+    kept_inds = []
+
+    #go through each kept frequency and add the index of the corresponding true frequency
+    for obs_freq in y_freqs:
+        
+        for og_ind, gt_freq in enumerate(gt_freqs):
+            
+            if obs_freq == gt_freq:
+                kept_inds.append(og_ind)
+                break
+    
+    n = len(gt_freqs)
+
+    kept_inds = np.array(kept_inds)
+
+    A = np.eye(n)[kept_inds]
+
+    return kept_inds, A
+
+def matrix_to_sparams(data_matrix):
+    """
+    Takes a raw 4D sparam matrix and returns a 3D array of sparam series.
+
+    Args:
+        data_matrix: Raw 4D sparam matrix. 
+                     (4D numpy array) - Axes are [Freq, In_port, Out_port, Re/Im].
+
+    Returns:
+        output: 3D array of time series.
+                (3D numpy array) - [Unique Port Pair, Re/Im, Freq].
+    """
+    num_freqs = data_matrix.shape[0]
+    num_ports = data_matrix.shape[1]
+
+    num_unique = int(num_ports * (num_ports + 1) / 2)
+    
+    output = np.zeros((num_unique, 2, num_freqs))
+
+    t = 0
+    for i in range(num_ports):
+        for j in range(i+1):
+            output[t] = np.copy(data_matrix[:, i, j, :]).transpose()
+            t += 1
+
+    return output
+
 class Measurement_MSE_Loss(nn.Module):
     """
     Given a signal x, observed measurements y, and observed indices kept_inds, 
@@ -159,4 +296,3 @@ class Measurement_MSE_Loss(nn.Module):
     
     def forward(self, x, y):
         return self.mse_loss(x[:, :, self.kept_inds], y)
-
