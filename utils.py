@@ -195,11 +195,11 @@ def grab_chip_data(root_pth, chip_num):
         
         out_network = Network(data_path)
         
-        out_matrix_re = out_network.s.real.astype(np.float32)
-        out_matrix_im = out_network.s.imag.astype(np.float32)
+        out_matrix_re = out_network.s.real.astype(np.float64)
+        out_matrix_im = out_network.s.imag.astype(np.float64)
         out_matrix = np.stack((out_matrix_re, out_matrix_im), axis=-1)
 
-        out_freqs = out_network.f.astype(np.float32).squeeze()
+        out_freqs = out_network.f.astype(np.float64).squeeze()
         
         return out_matrix, out_freqs
     
