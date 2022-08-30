@@ -145,13 +145,15 @@ def get_paddings(in_len):
 
     return L_PAD, R_PAD
 
-def grab_chip_data(root_pth, chip_num):
+def grab_chip_data(root_pth, chip_num, resample=False):
     """
     Given a root path and a chip number, grab all the relevant info for a chip.
     
     Args:
         root_pth: Root of the folder containing chip info.
         chip_num: Chip number.
+        resmple: If set to True, will also return a version of the ground truth data
+                    that has been resampled to have (2^N >= #OG_Freqs) frequency values.
     
     Returns:
         out_dict: Dictionary with all relevant chip data.
@@ -168,12 +170,13 @@ def grab_chip_data(root_pth, chip_num):
                                   (4D numpy array).
     """
     from skrf import Network, Frequency
+    import copy
     
     #Grab the correct folder
     chip_num = str(chip_num) if chip_num > 9 else "0" + str(chip_num)
     fname = os.path.join(root_pth, "case"+chip_num)
     
-    def grab_network_info(folder_pth, net_str):
+    def grab_network_info(folder_pth, net_str, resample=False):
         """
         Helper function that takes a string, searches a given folder for touchstone 
             files matching the string, grabs the S-param and frequency data, and 
@@ -194,21 +197,39 @@ def grab_chip_data(root_pth, chip_num):
         data_path = os.path.join(folder_pth, children)
         
         out_network = Network(data_path)
+
+        if resample:
+            og_matrix_re = out_network.s.real
+            og_matrix_im = out_network.s.imag
+            og_matrix = copy.deepcopy(np.stack((og_matrix_re, og_matrix_im), axis=-1))
+
+            og_freqs = copy.deepcopy(out_network.f.squeeze())
+            
+            og_len = len(og_freqs)
+            new_len = 2 ** int(np.ceil(np.log2(og_len)))
+            
+            out_network.resample(new_len)
         
-        out_matrix_re = out_network.s.real.astype(np.float64)
-        out_matrix_im = out_network.s.imag.astype(np.float64)
+        out_matrix_re = out_network.s.real
+        out_matrix_im = out_network.s.imag
         out_matrix = np.stack((out_matrix_re, out_matrix_im), axis=-1)
 
-        out_freqs = out_network.f.astype(np.float64).squeeze()
+        out_freqs = out_network.f.squeeze()
         
-        return out_matrix, out_freqs
+        if resample:
+            return og_matrix, og_freqs, out_matrix, out_freqs
+        else: 
+            return out_matrix, out_freqs
     
     #now make the proper filename strings and grab the gt, VF, and y data
     gt_str = str(chip_num) + ".s"
     vf_str = str(chip_num) + ".HLAS.s"
     y_str = "SIEMENS_AFS_SAMPLE_POINT_SIMULATIONS.s"
 
-    gt_matrix, gt_freqs = grab_network_info(fname, gt_str)
+    if resample:
+        og_matrix, og_freqs, gt_matrix, gt_freqs = grab_network_info(fname, gt_str, resample=resample)
+    else:
+        gt_matrix, gt_freqs = grab_network_info(fname, gt_str)    
     vf_matrix, _ = grab_network_info(fname, vf_str)
     y_matrix, y_freqs = grab_network_info(fname, y_str)
 
@@ -217,43 +238,12 @@ def grab_chip_data(root_pth, chip_num):
                 "vf_matrix": vf_matrix,
                 "y_matrix": y_matrix,
                 "y_freqs": y_freqs}
+
+    if resample:
+        out_dict["og_matrix"] = og_matrix
+        out_dict["og_freqs"] = og_freqs
             
     return out_dict
-
-def frequencies_to_samples(gt_freqs, y_freqs):
-    """
-    Takes ground truth and observed frequency values and returns the corresponding list
-        of sampled indices.
-
-    Args:
-        gt_freqs: Array of the ground truth frequency values that data is sampled at. 
-        y_freqs: Array of frequencies where we have observed samples from the true signal.
-
-    Returns:
-        kept_inds: Array of the sample indices that are kept based on elements of gt_freqs
-                            that are observed in y_freqs.
-        A: Forward operator for the inpainting problem based on kept_inds. 
-           2D array with a subset of the rows from the identity matrix. 
-    """
-
-    kept_inds = []
-
-    #go through each kept frequency and add the index of the corresponding true frequency
-    for obs_freq in y_freqs:
-        
-        for og_ind, gt_freq in enumerate(gt_freqs):
-            
-            if obs_freq == gt_freq:
-                kept_inds.append(og_ind)
-                break
-    
-    n = len(gt_freqs)
-
-    kept_inds = np.array(kept_inds)
-
-    A = np.eye(n)[kept_inds]
-
-    return kept_inds, A
 
 def matrix_to_sparams(data_matrix):
     """
