@@ -52,7 +52,7 @@ class Down(nn.Module):
         
         self.maxpool_conv = nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-            nn.MaxPool1d(2), 
+            nn.AvgPool1d(2), 
             nn.BatchNorm1d(out_channels),
             nn.LeakyReLU(inplace=True),
             SingleConv(out_channels, out_channels, kernel_size=kernel_size)
@@ -64,23 +64,14 @@ class Down(nn.Module):
 class Up(nn.Module):
     """Upscaling then double conv"""
 
-    def __init__(self, in_channels, out_channels, linear=True, kernel_size=3):
+    def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
 
-        # if linear, use the normal convolutions to reduce the number of channels
-        if linear:
-            self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, kernel_size=kernel_size)
-        else:
-            self.up = nn.ConvTranspose1d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels, kernel_size=kernel_size)
+        self.up = nn.Upsample(scale_factor=2, mode='linear')
+        self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, kernel_size=kernel_size)
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
-        
-        # input is [N, C, L]
-        diffL = x2.size()[-1] - x1.size()[-1]
-        x1 = F.pad(x1, [diffL // 2, diffL - diffL // 2])
         
         x = torch.cat([x2, x1], dim=1)
         
@@ -92,8 +83,7 @@ class Up_NoCat(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
 
-        self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
-        
+        self.up = nn.Upsample(scale_factor=2, mode='linear')
         self.conv = DoubleConv(in_channels, out_channels, in_channels, kernel_size=kernel_size)
 
     def forward(self, x):
