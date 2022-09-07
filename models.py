@@ -166,6 +166,7 @@ class ENC_DEC(nn.Module):
             output_size: the desired output length
             nc: number of channels in the output
             optimize_z: whether to optimize over the random input to the network
+            kernel_size: can be a list - then must be length num_layers, symmetric, ordered from encoder.
         """
         super().__init__()
         
@@ -182,34 +183,34 @@ class ENC_DEC(nn.Module):
         #NOTE trying smaller num_layers now! Used to be - 1
         num_layers = int(np.ceil(np.log2(output_size))) - 5 #number of down/up sampling layers
         num_layers = max(num_layers, 5)
-        padded_len = 2 ** int(np.ceil(np.log2(output_size)))
         
         ###########
         #  INPUT  #
         ###########
         if optimize_z:
-            self.z = nn.Parameter(torch.randn((bs, nz, padded_len)))
+            self.z = nn.Parameter(torch.randn((bs, nz, output_size)))
         else:
-            self.register_buffer('z', torch.randn((bs, nz, padded_len), requires_grad=False))
+            self.register_buffer('z', torch.randn((bs, nz, output_size), requires_grad=False))
         
         ###########
         #NET STUFF#
         ###########
-        # self.input = OutConv(nz, ngf)
-        # self.output = OutConv(ngf, nc)
-        self.input = nn.Conv1d(nz, ngf, kernel_size=3, padding=1, padding_mode='reflect', bias=False)
-        self.output = nn.Conv1d(ngf, nc, kernel_size=3, padding=1, padding_mode='reflect', bias=False)
+        self.input = OutConv(nz, ngf)
+        self.output = OutConv(ngf, nc)
+
+        if not isinstance(kernel_size, list):
+            kernel_size = [kernel_size] * num_layers
         
         encoder = []
         decoder = []
         for l in range(num_layers):
             ch_1 = ngf * (l + 1)
             ch_2 = ngf * (l + 2)
-            encoder.append(Down(ch_1, ch_2, kernel_size=kernel_size))
+            encoder.append(Down(ch_1, ch_2, kernel_size=kernel_size[l]))
             
             ch_3 = ngf * (num_layers - l + 1)
             ch_4 = ngf * (num_layers - l)
-            decoder.append(Up_NoCat(ch_3, ch_4, kernel_size=kernel_size))
+            decoder.append(Up_NoCat(ch_3, ch_4, kernel_size=kernel_size[num_layers - l - 1]))
         
         self.encoder = nn.Sequential(*encoder)
         self.decoder = nn.Sequential(*decoder)

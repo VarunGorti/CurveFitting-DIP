@@ -15,10 +15,10 @@ class DoubleConv(nn.Module):
         
         self.double_conv = nn.Sequential(
             nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-            nn.BatchNorm1d(mid_channels),
+            nn.BatchNorm1d(mid_channels, affine=False),
             nn.LeakyReLU(inplace=True),
             nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-            nn.BatchNorm1d(out_channels),
+            nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU(inplace=True)
         )
 
@@ -35,7 +35,7 @@ class SingleConv(nn.Module):
         
         self.single_conv = nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-            nn.BatchNorm1d(out_channels),
+            nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU(inplace=True)
         )
 
@@ -53,7 +53,7 @@ class Down(nn.Module):
         self.maxpool_conv = nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.AvgPool1d(2), 
-            nn.BatchNorm1d(out_channels),
+            nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU(inplace=True),
             SingleConv(out_channels, out_channels, kernel_size=kernel_size)
         )
