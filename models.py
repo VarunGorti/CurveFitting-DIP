@@ -179,6 +179,7 @@ class ENC_DEC(nn.Module):
         self.output_size = output_size
         self.nc = nc
         self.optimize_z = optimize_z
+        self.kernel_size = kernel_size
         
         #NOTE trying smaller num_layers now! Used to be - 1
         num_layers = int(np.ceil(np.log2(output_size))) - 5 #number of down/up sampling layers

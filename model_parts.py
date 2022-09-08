@@ -102,6 +102,7 @@ class OutConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+#NOTE everything below this line is deprecated
 class MultiScaleDown(nn.Module):
     """Version of Down that uses multiple conv kernel sizes"""
 

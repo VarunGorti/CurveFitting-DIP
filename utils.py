@@ -16,6 +16,7 @@ def set_all_seeds(seed):
 
     return
 
+#NOTE DEPRECATED
 def get_single_series(data_path, sample_num, sparam_num, num_chan=2):
     """
     Grabs the Real or (Real, Im) series for a single sample and a single s-parameter.
@@ -79,6 +80,7 @@ def get_inds(problem_type, length, num_kept_samples):
     
     return np.sort(kept_inds), np.sort(missing_inds)
 
+#NOTE DEPRECATED
 def plot_signal_and_measurements(x, y, kept_inds, fname=None):
     """
     Given a ground truth signal, plot the signal, interpolated observations, and raw observations.
@@ -123,6 +125,7 @@ def plot_signal_and_measurements(x, y, kept_inds, fname=None):
 
     return
 
+#NOTE DEPRECATED
 def get_paddings(in_len):
     """
     Given an input length, gives left and right padding factors to get to the 
@@ -271,6 +274,31 @@ def matrix_to_sparams(data_matrix):
             t += 1
 
     return output
+
+def to_mag(data):
+    """
+    Converts a given signal in re/im to magnitude in Db.
+
+    Args:
+        data: A time/frequency series signal with real and imaginary channels.
+              Can be either a numpy array or a torch tensor.
+              Can have shape [1, 2*num_sparams, length] where the second channel
+                holds the real and imaginary parts of each s-param.
+              Can also have shape [num_sparams, 2, length].
+    """
+    if data.shape[0] == 1:
+        n_sparams = data.shape[1] // 2
+        data = data.squeeze().view(n_sparams, 2, -1)
+    
+    n_sparams = data.shape[0]
+    length = data.shape[-1]
+    
+    mag_data = torch.zeros(n_sparams, length)
+    
+    for i in range(n_sparams):
+        mag_data[i] = torch.square(data[i, 0, :]) + torch.square(data[i, 1, :])
+    
+    return 10 * torch.log10(mag_data)
 
 class Measurement_MSE_Loss(nn.Module):
     """
