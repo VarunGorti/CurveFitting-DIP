@@ -275,16 +275,47 @@ def matrix_to_sparams(data_matrix):
 
     return output
 
+def sparams_to_matrix(sparams_data):
+    """
+    Function for converting a 3-D frequency series sparam data back to 
+        a 4-D frequency matrix series.
+    
+    Args:
+        sparams_data: 3D frequnecy series.
+                      Torch tensor [1, 2 * unique_sparams, Freq].
+    
+    Returns:
+        A: 4D matrix sparam frequency series. 
+           Torch tensor [Freq, In_port, Out_port, Re/Im].
+    """
+    _, num_unique, num_freqs = sparams_data.shape
+    num_unique = num_unique // 2
+
+    num_ports = (-1 + np.sqrt(8*num_unique + 1)) // 2
+    num_ports = int(num_ports)
+
+    data_matrix = sparams_data.squeeze(0).view(num_unique, 2, num_freqs)
+
+    A = torch.zeros(num_freqs, num_ports, num_ports, 2).to(sparams_data.device).type(sparams_data.dtype)
+    i, j = torch.triu_indices(num_ports, num_ports)
+    A[:, i, j, :] = data_matrix.permute(2, 0, 1)
+    A.transpose(1, 2)[:, i, j, :] = data_matrix.permute(2, 0, 1)
+
+    return A
+
 def to_mag(data):
     """
     Converts a given signal in re/im to magnitude in Db.
 
     Args:
         data: A time/frequency series signal with real and imaginary channels.
-              Can be either a numpy array or a torch tensor.
               Can have shape [1, 2*num_sparams, length] where the second channel
                 holds the real and imaginary parts of each s-param.
               Can also have shape [num_sparams, 2, length].
+              Torch Tensor.
+    
+    Returns:
+        magnitude_data: magnitude of each unique s-parameter in decibels.
     """
     if data.shape[0] == 1:
         n_sparams = data.shape[1] // 2
