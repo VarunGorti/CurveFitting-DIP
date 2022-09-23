@@ -16,10 +16,10 @@ class DoubleConv(nn.Module):
         self.double_conv = nn.Sequential(
             nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(mid_channels, affine=False),
-            nn.LeakyReLU(inplace=True),
+            nn.LeakyReLU(),
             nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels, affine=False),
-            nn.LeakyReLU(inplace=True)
+            nn.LeakyReLU()
         )
 
     def forward(self, x):
@@ -36,14 +36,14 @@ class SingleConv(nn.Module):
         self.single_conv = nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels, affine=False),
-            nn.LeakyReLU(inplace=True)
+            nn.LeakyReLU()
         )
 
     def forward(self, x):
         return self.single_conv(x)
 
 class Down(nn.Module):
-    """Conv, Down with maxpool, BN, LeakyReLU, then single conv"""
+    """Conv, Down with avgpool, BN, LeakyReLU, then single conv"""
 
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
@@ -54,28 +54,12 @@ class Down(nn.Module):
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.AvgPool1d(2), 
             nn.BatchNorm1d(out_channels, affine=False),
-            nn.LeakyReLU(inplace=True),
+            nn.LeakyReLU(),
             SingleConv(out_channels, out_channels, kernel_size=kernel_size)
         )
 
     def forward(self, x):
         return self.maxpool_conv(x)
-
-class Up(nn.Module):
-    """Upscaling then double conv"""
-
-    def __init__(self, in_channels, out_channels, kernel_size=3):
-        super().__init__()
-
-        self.up = nn.Upsample(scale_factor=2, mode='linear')
-        self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, kernel_size=kernel_size)
-
-    def forward(self, x1, x2):
-        x1 = self.up(x1)
-        
-        x = torch.cat([x2, x1], dim=1)
-        
-        return self.conv(x)
 
 class Up_NoCat(nn.Module):
     """Upscaling then double conv, with no concatenation"""
@@ -102,196 +86,90 @@ class OutConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-#NOTE everything below this line is deprecated
-class MultiScaleDown(nn.Module):
-    """Version of Down that uses multiple conv kernel sizes"""
+class InputResidualConv(nn.Module):
+    """
+    Takes the input through 2 paths and sums the output.
+    Path 1: Conv -> BN -> LeakyReLU -> Conv
+    Path 2: 1x1 Conv  
+    """
 
-    def __init__(self, in_channels, out_channels, num_scales):
-        super().__init__()
-        
-        out_channels = out_channels // num_scales
-        
-        layers = []
-        for scale in range(num_scales):
-            next_layer = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=(2*scale + 3), padding=scale+1, padding_mode='reflect', bias=False),
-                nn.MaxPool1d(2),
-                nn.BatchNorm1d(out_channels),
-                nn.LeakyReLU(inplace=True),
-                nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
-                nn.BatchNorm1d(out_channels),
-                nn.LeakyReLU(inplace=True)
-            )
-            layers.append(next_layer)
-        
-        self.layers = nn.ModuleList(layers)
-
-    def forward(self, x):
-        outputs = []
-        
-        for layer in self.layers:
-            outputs.append(layer(x))
-        
-        return torch.cat(outputs, dim=1)
-
-class MultiScaleUp_NoCat(nn.Module):
-    """Version of Up_NoCat with multiple convolution kernel sizes"""
-
-    def __init__(self, in_channels, out_channels, num_scales):
+    def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
 
-        self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
-        
-        out_channels = out_channels // num_scales
-        
-        layers = []
-        for scale in range(num_scales):
-            next_layer = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=(2*scale + 3), padding=scale+1, padding_mode='reflect', bias=False),
-                nn.BatchNorm1d(out_channels),
-                nn.LeakyReLU(inplace=True),
-                nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
-                nn.BatchNorm1d(out_channels),
-                nn.LeakyReLU(inplace=True)
-            )
-            layers.append(next_layer)
-        
-        self.layers = nn.ModuleList(layers)
+        pad = (kernel_size - 1) // 2
 
-    def forward(self, x):
-        x = self.up(x)
-        
-        outputs = []
-        
-        for layer in self.layers:
-            outputs.append(layer(x))
-        
-        return torch.cat(outputs, dim=1)
+        self.input_layer = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+            nn.BatchNorm1d(out_channels, affine=False),
+            nn.LeakyReLU(),
+            nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+        )
 
-class Dilate_MultiScale_Block(nn.Module):
-    def __init__(self, in_channels, out_channels, num_scales, downsample=False):
-        super().__init__()
-
-        self.downsample = downsample
-        if not downsample:
-            self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
-
-        start_layers = []
-        mid_layers = []
-        for scale in range(num_scales):
-            dilation = scale + 1
-            padding = dilation 
-
-            first_layer = [nn.Conv1d(in_channels, out_channels//num_scales, kernel_size=3, dilation=dilation, padding=padding, padding_mode='reflect', bias=False)]
-            if downsample:
-                first_layer.append(nn.MaxPool1d(2))
-            first_layer.extend([nn.BatchNorm1d(out_channels//num_scales), nn.LeakyReLU(inplace=True)])
-            start_layers.append(nn.Sequential(*first_layer))
-
-            mid_layers.append(nn.Sequential(
-                nn.Conv1d(out_channels, out_channels//num_scales, kernel_size=3, dilation=dilation, padding=padding, padding_mode='reflect', bias=False),
-                nn.BatchNorm1d(out_channels//num_scales),
-                nn.LeakyReLU(inplace=True)
-            ))
-        
-        self.start_layers = nn.ModuleList(start_layers)
-        self.mid_layers = nn.ModuleList(mid_layers)
-
-        self.last_layers = nn.Sequential(
-            nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm1d(out_channels),
-            nn.LeakyReLU(inplace=True)
+        self.input_skip = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
         )
     
     def forward(self, x):
-        if not self.downsample:
-            x = self.up(x)
-        
-        outputs = []
-        for layer in self.start_layers:
-            outputs.append(layer(x))
-        x = torch.cat(outputs, dim=1)
+        return self.input_layer(x) + self.input_skip(x)
 
-        outputs = []
-        for layer in self.mid_layers:
-            outputs.append(layer(x))
-        x = torch.cat(outputs, dim=1)
-
-        x = self.last_layers(x)
-
-        return x
-
-def get_primes(n):
+class ResidualConv(nn.Module):
     """
-    Grab all prime numbers from 1 to n
+    Takes the input through 2 paths and sums the output.
+    Path 1: BN -> LeakyReLU -> Conv -> AvgPool -> BN -> LReLU -> Conv
+    Path 2: 1x1 Conv -> AvgPool.
+    If argument "downsample" is false, then no avg pooling    
     """
-    numbers = set(range(n, 1, -1))
-    primes = []
-    while numbers:
-        p = numbers.pop()
-        primes.append(p)
-        numbers.difference_update(set(range(p*2, n+1, p)))
-    primes.remove(2)
-    return primes
 
-class OS_Block(nn.Module):
-    """
-    A block as seen in OMNI-SCALE CNNS (https://openreview.net/pdf?id=PDYs7Z2XFGv)
-    """
-    def __init__(self, in_channels, out_channels, num_scales, downsample=False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, downsample=False):
         super().__init__()
 
-        #Grab the list of prime numbers
-        prime_list = get_primes(2**10)[:num_scales]
+        pad = (kernel_size - 1) // 2
 
-        self.downsample = downsample
-        if not downsample:
-            self.up = nn.Upsample(scale_factor=2, mode='linear', align_corners=True)
+        if downsample:
+            self.conv_block = nn.Sequential(
+                nn.BatchNorm1d(in_channels, affine=False),
+                nn.LeakyReLU(),
+                nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+                nn.AvgPool1d(2), 
+                nn.BatchNorm1d(out_channels, affine=False),
+                nn.LeakyReLU(),
+                nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+            )
 
-        start_layers = []
-        # mid_layers = []
-        for scale in range(num_scales):
-            kernel_size = prime_list[scale]
-            padding = (kernel_size - 1) // 2
+            self.conv_skip = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
+                nn.AvgPool1d(2) 
+            )
 
-            first_layer = [nn.Conv1d(in_channels, out_channels//num_scales, kernel_size=kernel_size, padding=padding, padding_mode='reflect', bias=False)]
-            if downsample:
-                first_layer.append(nn.MaxPool1d(2))
-            first_layer.extend([nn.BatchNorm1d(out_channels//num_scales), nn.LeakyReLU(inplace=True)])
-            first_layer.extend([nn.Conv1d(out_channels//num_scales, out_channels//num_scales, kernel_size=1, bias=False),
-                                nn.BatchNorm1d(out_channels//num_scales),
-                                nn.LeakyReLU(inplace=True)])
-            start_layers.append(nn.Sequential(*first_layer))
+        else:
+            self.conv_block = nn.Sequential(
+                nn.BatchNorm1d(in_channels, affine=False),
+                nn.LeakyReLU(),
+                nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+                nn.BatchNorm1d(out_channels, affine=False),
+                nn.LeakyReLU(),
+                nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+            )
 
-            # mid_layers.append(nn.Sequential(
-            #     nn.Conv1d(out_channels, out_channels//num_scales, kernel_size=kernel_size, padding=padding, padding_mode='reflect', bias=False),
-            #     nn.BatchNorm1d(out_channels//num_scales),
-            #     nn.LeakyReLU(inplace=True)
-            # ))
-        
-        self.start_layers = nn.ModuleList(start_layers)
-        # self.mid_layers = nn.ModuleList(mid_layers)
-
-        # self.last_layers = nn.Sequential(
-        #     nn.Conv1d(out_channels, out_channels, kernel_size=1, bias=False),
-        #     nn.BatchNorm1d(out_channels),
-        #     nn.LeakyReLU(inplace=True)
-        # )
+            self.conv_skip = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
+            )
     
     def forward(self, x):
-        if not self.downsample:
-            x = self.up(x)
-        
-        outputs = []
-        for layer in self.start_layers:
-            outputs.append(layer(x))
-        x = torch.cat(outputs, dim=1)
+        return self.conv_block(x) + self.conv_skip(x)
 
-        # outputs = []
-        # for layer in self.mid_layers:
-        #     outputs.append(layer(x))
-        # x = torch.cat(outputs, dim=1)
+class UpConv(nn.Module):
+    """
+     Linear Upsampling -> 1x1 conv
+    """
 
-        # x = self.last_layers(x)
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
 
-        return x
+        self.up_conv = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='linear'),
+            nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
+        )
+
+    def forward(self, x):
+        return self.up_conv(x)
