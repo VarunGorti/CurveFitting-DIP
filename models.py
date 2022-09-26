@@ -180,4 +180,10 @@ class RES_UNET(nn.Module):
         out = self.output(out)
 
         return out
-            
+
+    def forward_with_z(self):
+        return self.forward(self.z)
+    
+    @torch.no_grad()
+    def perturb_noise(self, std=0.1):
+        self.z += torch.randn_like(self.z) * std
