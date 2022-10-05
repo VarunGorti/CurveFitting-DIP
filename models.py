@@ -85,7 +85,7 @@ class ENC_DEC(nn.Module):
         self.z += torch.randn_like(self.z) * std
 
 class RES_UNET(nn.Module):
-    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None):
         """
         Args:
             bs: the batch size
@@ -110,8 +110,9 @@ class RES_UNET(nn.Module):
         self.kernel_size = kernel_size
         
         #NOTE trying smaller num_layers now! Used to be - 1
-        num_layers = int(np.ceil(np.log2(output_size))) - 5 #number of down/up sampling layers
-        num_layers = max(num_layers, 5)
+        if num_layers is None:
+            num_layers = int(np.ceil(np.log2(output_size))) - 5 #number of down/up sampling layers
+            num_layers = max(num_layers, 5)
 
         ###########
         #  INPUT  #
@@ -187,3 +188,16 @@ class RES_UNET(nn.Module):
     @torch.no_grad()
     def perturb_noise(self, std=0.1):
         self.z += torch.randn_like(self.z) * std
+        
+    @torch.no_grad()
+    def set_z(self, latent_seed):
+        if isinstance(latent_seed, np.ndarray):
+            self.z = torch.from_numpy(latent_seed).type(self.z.dtype).to(self.z.device).requires_grad_(self.z.requires_grad)
+            
+        elif torch.is_tensor(latent_seed):
+            self.z = latent_seed.detach().clone().type(self.z.dtype).to(self.z.device).requires_grad_(self.z.requires_grad)
+            
+        else:
+            raise ValueError("argument must be a numpy array or a torch tensor")
+        
+        return
