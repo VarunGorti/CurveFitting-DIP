@@ -372,3 +372,43 @@ class Measurement_MSE_Loss(nn.Module):
                 rsse_per_chan = torch.sqrt(sse_per_chan) #[1, 2 * N_sparams]
                 
                 return torch.sum(rsse_per_chan) 
+
+class Smoothing_Loss(nn.Module):
+    """
+    Loss function that penalizes second-order differences in a time series.
+
+    Args:
+        per_param: Whether to reduce the loss for each S-param individually
+                    before reducing the loss.
+                   This can help with robustly fitting each S-param well.
+        reduction: ["mean", "sum"]
+    """
+    def __init__(self, per_param=False, reduction="mean"):
+        super().__init__()
+
+        self.per_param = per_param
+        self.reduction = reduction
+    
+    def forward(self, x):
+        second_order_diffs = torch.diff(x, n=2, dim=2) #[1, 2 * N_sparams, N_freqs - 2]
+        squared_second_diffs = torch.square(second_order_diffs) #[1, 2 * N_sparams, N_freqs - 2]
+
+        if not self.per_param:
+            if self.reduction == "mean":
+                return torch.mean(squared_second_diffs)
+            elif self.reduction == "sum":
+                return torch.sum(squared_second_diffs)
+        
+        else:
+            if self.reduction == "mean":
+                loss_per_chan = torch.mean(squared_second_diffs, dim=2) #[1, 2 * N_sparams]
+                rloss_per_chan = torch.sqrt(loss_per_chan) #[1, 2 * N_sparams]
+                
+                return torch.mean(rloss_per_chan) 
+            
+            elif self.reduction == "sum":
+                loss_per_chan = torch.sum(squared_second_diffs, dim=2) #[1, 2 * N_sparams]
+                rloss_per_chan = torch.sqrt(loss_per_chan) #[1, 2 * N_sparams]
+                
+                return torch.sum(rloss_per_chan) 
+                
