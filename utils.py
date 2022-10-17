@@ -390,7 +390,7 @@ class Smoothing_Loss(nn.Module):
         self.reduction = reduction
     
     def forward(self, x):
-        second_order_diffs = torch.diff(x, n=2, dim=2) #[1, 2 * N_sparams, N_freqs - 2]
+        second_order_diffs = torch.diff(torch.diff(x, dim=2), dim=2) #[1, 2 * N_sparams, N_freqs - 2]
         squared_second_diffs = torch.square(second_order_diffs) #[1, 2 * N_sparams, N_freqs - 2]
 
         if not self.per_param:
