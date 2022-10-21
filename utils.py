@@ -151,6 +151,7 @@ def get_paddings(in_len):
 def grab_chip_data(root_pth, chip_num, resample=False):
     """
     Given a root path and a chip number, grab all the relevant info for a chip.
+    Converts the data type of the output to float32.
     
     Args:
         root_pth: Root of the folder containing chip info.
@@ -236,21 +237,22 @@ def grab_chip_data(root_pth, chip_num, resample=False):
     vf_matrix, _ = grab_network_info(fname, vf_str)
     y_matrix, y_freqs = grab_network_info(fname, y_str)
 
-    out_dict = {"gt_matrix": gt_matrix,
-                "gt_freqs": gt_freqs,
-                "vf_matrix": vf_matrix,
-                "y_matrix": y_matrix,
-                "y_freqs": y_freqs}
+    out_dict = {"gt_matrix": gt_matrix.astype('float32'),
+                "gt_freqs": gt_freqs.astype('float32'),
+                "vf_matrix": vf_matrix.astype('float32'),
+                "y_matrix": y_matrix.astype('float32'),
+                "y_freqs": y_freqs.astype('float32')}
 
     if resample:
-        out_dict["og_matrix"] = og_matrix
-        out_dict["og_freqs"] = og_freqs
+        out_dict["og_matrix"] = og_matrix.astype('float32')
+        out_dict["og_freqs"] = og_freqs.astype('float32')
             
     return out_dict
 
 def matrix_to_sparams(data_matrix):
     """
     Takes a raw 4D sparam matrix and returns a 3D array of sparam series.
+    Output is float32.
 
     Args:
         data_matrix: Raw 4D sparam matrix. 
@@ -265,7 +267,7 @@ def matrix_to_sparams(data_matrix):
 
     num_unique = int(num_ports * (num_ports + 1) / 2)
     
-    output = np.zeros((num_unique, 2, num_freqs))
+    output = np.zeros((num_unique, 2, num_freqs), dtype='float32')
 
     t = 0
     for i in range(num_ports):
@@ -275,10 +277,12 @@ def matrix_to_sparams(data_matrix):
 
     return output
 
-def sparams_to_matrix(sparams_data):
+#NOTE deprecated!
+def sparams_to_matrix_2(sparams_data):
     """
     Function for converting a 3-D frequency series sparam data back to 
         a 4-D frequency matrix series.
+    Output is the same datatype as the input.
     
     Args:
         sparams_data: 3D frequnecy series.
@@ -302,6 +306,28 @@ def sparams_to_matrix(sparams_data):
     A.transpose(1, 2)[:, i, j, :] = data_matrix.permute(2, 0, 1)
 
     return A
+
+def sparams_to_matrix(sparams_data):
+    _, num_unique, num_freqs = sparams_data.shape
+    num_unique = num_unique // 2
+
+    num_ports = (-1 + np.sqrt(8*num_unique + 1)) // 2
+    num_ports = int(num_ports)
+
+    A = torch.zeros(num_freqs, num_ports, num_ports, 2).to(sparams_data.device).type(sparams_data.dtype)
+
+    for i in range(num_ports):
+        for j in range(i+1):
+            A[:, i, j, 0] = sparams_data[0, i*(i+1) + 2*j, :].clone()
+            A[:, i, j, 1] = sparams_data[0, i*(i+1) + 2*j + 1, :].clone()
+    
+    out_mat = A.clone()
+
+    torch.diagonal(A, 0, 1, 2).zero_()
+
+    out_mat += A.transpose(1, 2)
+
+    return out_mat
 
 def to_mag(data):
     """
