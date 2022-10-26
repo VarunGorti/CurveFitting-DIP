@@ -238,16 +238,56 @@ def grab_chip_data(root_pth, chip_num, resample=False):
     y_matrix, y_freqs = grab_network_info(fname, y_str)
 
     out_dict = {"gt_matrix": gt_matrix.astype('float32'),
-                "gt_freqs": gt_freqs.astype('float32'),
+                "gt_freqs": gt_freqs,
                 "vf_matrix": vf_matrix.astype('float32'),
                 "y_matrix": y_matrix.astype('float32'),
-                "y_freqs": y_freqs.astype('float32')}
+                "y_freqs": y_freqs}
 
     if resample:
         out_dict["og_matrix"] = og_matrix.astype('float32')
-        out_dict["og_freqs"] = og_freqs.astype('float32')
+        out_dict["og_freqs"] = og_freqs
             
     return out_dict
+
+#NOTE STILL TESTING!
+def matrix_to_network(data_matrix, data_freqs, name, resample_freqs=None):
+    """
+    Takes a raw 4D sparam matrix and returns a Network.
+
+    Args:
+        data_matrix: Raw 4D sparam matrix. 
+                     (4D torch tensor) - Axes are [Freq, In_port, Out_port, Re/Im].
+        data_freqs: Sampled frequencies. Must be same length as first axis of data_matrix.
+                    (1D numpy array).   
+        name: The name of the network.
+              (String)
+        resample_freqs: Frequencies to resample the data to. Default is None.
+                        (1D numpy array). 
+    
+    Returns:
+        net: A scikit-RF Network object.
+    """
+    from skrf import Network, Frequency
+    import scipy
+    
+    #Convert the data properly to complex
+    temp_data = data_matrix.detach().cpu().numpy().astype('float64')
+    
+    net_data = np.empty(temp_data.shape[:-1], dtype=np.complex128)
+    net_data.real = temp_data[..., 0]
+    net_data.imag = temp_data[..., 1]
+
+    #Make the network
+    net_freqs = Frequency.from_f(data_freqs)
+
+    net = Network(frequency=net_freqs, s=net_data, name=name)
+
+    #Check if we need to re-sample
+    if resample_freqs is not None:
+        new_freqs = Frequency.from_f(resample_freqs)
+        net.resample(new_freqs)
+    
+    return net
 
 def matrix_to_sparams(data_matrix):
     """
@@ -277,8 +317,7 @@ def matrix_to_sparams(data_matrix):
 
     return output
 
-#NOTE deprecated!
-def sparams_to_matrix_2(sparams_data):
+def sparams_to_matrix(sparams_data):
     """
     Function for converting a 3-D frequency series sparam data back to 
         a 4-D frequency matrix series.
@@ -292,22 +331,6 @@ def sparams_to_matrix_2(sparams_data):
         A: 4D matrix sparam frequency series. 
            Torch tensor [Freq, In_port, Out_port, Re/Im].
     """
-    _, num_unique, num_freqs = sparams_data.shape
-    num_unique = num_unique // 2
-
-    num_ports = (-1 + np.sqrt(8*num_unique + 1)) // 2
-    num_ports = int(num_ports)
-
-    data_matrix = sparams_data.squeeze(0).view(num_unique, 2, num_freqs)
-
-    A = torch.zeros(num_freqs, num_ports, num_ports, 2).to(sparams_data.device).type(sparams_data.dtype)
-    i, j = torch.triu_indices(num_ports, num_ports)
-    A[:, i, j, :] = data_matrix.permute(2, 0, 1)
-    A.transpose(1, 2)[:, i, j, :] = data_matrix.permute(2, 0, 1)
-
-    return A
-
-def sparams_to_matrix(sparams_data):
     _, num_unique, num_freqs = sparams_data.shape
     num_unique = num_unique // 2
 
