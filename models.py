@@ -109,10 +109,11 @@ class RES_UNET(nn.Module):
         self.optimize_z = optimize_z
         self.kernel_size = kernel_size
         
-        #NOTE trying smaller num_layers now! Used to be - 1
+        #NOTE (num_layers - 1) is the number of resolution scales (i.e. number of up/down samples)
+        #e.g. for num_layers = 5, there are 4 scales - divides original resolution by 2^4 = 16  
         if num_layers is None:
-            num_layers = int(np.ceil(np.log2(output_size))) - 5 #number of down/up sampling layers
-            num_layers = max(num_layers, 5)
+            num_layers = int(np.ceil(np.log2(output_size))) - 4 #this will give (smallest resolution <= 32 pixels)
+            num_layers = max(num_layers, 5) #ensure minimum size of net
 
         ###########
         #  INPUT  #
