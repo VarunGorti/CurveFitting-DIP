@@ -249,7 +249,6 @@ def grab_chip_data(root_pth, chip_num, resample=False):
             
     return out_dict
 
-#NOTE STILL TESTING!
 def matrix_to_network(data_matrix, data_freqs, name, resample_freqs=None):
     """
     Takes a raw 4D sparam matrix and returns a Network.
