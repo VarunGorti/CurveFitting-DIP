@@ -175,7 +175,7 @@ class RES_UNET(nn.Module):
         i = -1
         for up_layer, dec_layer in zip(self.upsamples[::-1], self.decoder[::-1]):
             out = up_layer(out)
-            out = torch.cat([out, intermediate_outs[i]], dim=1)
+            out = crop_and_cat(out, intermediate_outs[i])
             out = dec_layer(out)
             i -= 1
 

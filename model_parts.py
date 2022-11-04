@@ -118,6 +118,8 @@ class ResidualConv(nn.Module):
     Path 1: BN -> LeakyReLU -> Conv -> AvgPool -> BN -> LReLU -> Conv
     Path 2: 1x1 Conv -> AvgPool.
     If argument "downsample" is false, then no avg pooling    
+
+    AvgPool uses ceil_mode=True so for odd-sized inputs, output_len = (input_len + 1)/2.
     """
 
     def __init__(self, in_channels, out_channels, kernel_size=3, downsample=False):
@@ -130,7 +132,7 @@ class ResidualConv(nn.Module):
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
                 nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                nn.AvgPool1d(2), 
+                nn.AvgPool1d(2, ceil_mode=True), 
                 nn.BatchNorm1d(out_channels, affine=False),
                 nn.LeakyReLU(),
                 nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
@@ -138,7 +140,7 @@ class ResidualConv(nn.Module):
 
             self.conv_skip = nn.Sequential(
                 nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
-                nn.AvgPool1d(2) 
+                nn.AvgPool1d(2, ceil_mode=True) 
             )
 
         else:
@@ -173,3 +175,14 @@ class UpConv(nn.Module):
 
     def forward(self, x):
         return self.up_conv(x)
+
+def crop_and_cat(x1, x2):
+    """
+    Crops x1 to match x2 in length, then cats the two and return.
+    """
+    diff = x1.size()[-1] - x2.size()[-1]
+
+    if diff > 0:
+        return torch.cat([x1[...,:-diff], x2], dim=1)
+    else:
+        return torch.cat([x1, x2], dim=1)

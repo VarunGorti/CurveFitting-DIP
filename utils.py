@@ -68,7 +68,7 @@ def get_inds(problem_type, length, num_kept_samples):
     if problem_type=="random":
         kept_inds = np.random.choice(length, num_kept_samples, replace=False)
     elif problem_type=="equal":
-        kept_inds = np.arange(0, length, (length // num_kept_samples))
+        kept_inds = np.linspace(0, length-1, num=num_kept_samples, dtype=int)
     elif problem_type=="forecast":
         kept_inds = np.arange(0, num_kept_samples)
     elif problem_type=="full":
