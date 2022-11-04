@@ -141,6 +141,7 @@ class RES_UNET(nn.Module):
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
         self.upsamples = nn.ModuleList()
+
         for l in range(num_layers - 1):
             if l == 0:
                 self.encoder.append(
