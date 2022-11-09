@@ -379,8 +379,6 @@ def to_mag(data):
     
     return 10 * torch.log10(mag_data)
 
-#NOTE THIS WILL NOT WORK
-#SVD MUST BE PARALLELIZED - BEST WAY IS TO MAKE THE EQUIVALENT REAL MATRIX ISOMORPHISM!
 def sparams_to_sing_vals(sparams_data):
     """
     Function for taking 3-D frequency series sparam data and
@@ -389,6 +387,10 @@ def sparams_to_sing_vals(sparams_data):
     Args:
         sparams_data: 3D frequnecy series.
                       Torch tensor [1, 2 * unique_sparams, Freq].
+    
+    Returns:
+        svd: The SVDs of each (num_ports x num_ports) matrix in the frequency series.
+             Torch tensor [num_freqs, num_ports]
     """
     _, num_unique, num_freqs = sparams_data.shape
     num_unique = num_unique // 2
@@ -402,7 +404,7 @@ def sparams_to_sing_vals(sparams_data):
         for j in range(i+1):
             #grab the real and imaginary parts
             #if they're diagonal, divide by two to account for double addition when we sum transpose
-            if i!=j:
+            if i != j:
                 A[:, i, j, 0] = sparams_data[0, i*(i+1) + 2*j, :]
                 A[:, i, j, 1] = sparams_data[0, i*(i+1) + 2*j + 1, :]
             else:
@@ -410,10 +412,10 @@ def sparams_to_sing_vals(sparams_data):
                 A[:, i, j, 1] = sparams_data[0, i*(i+1) + 2*j + 1, :] / 2
     
     A = A + A.transpose(1, 2)
-    
-    A_complex = torch.complex(A[..., 0], A[..., 1]) #[num_freqs, num_ports, num_ports]
 
-    return torch.linalg.svd(A_complex, compute_uv=False)
+    #torch.complex.... makes a [num_freqs, num_ports, num_ports] tensor
+    #NOTE must have compute_UV = True to use gradients
+    return torch.linalg.svd(torch.complex(A[..., 0], A[..., 1]))[1]
     
 
 class Measurement_MSE_Loss(nn.Module):
@@ -497,3 +499,16 @@ class Smoothing_Loss(nn.Module):
                 
                 return torch.sum(rloss_per_chan) 
                 
+class Passive_Loss(nn.Module):
+    """
+    Loss function that penalizes singular values larger than 1
+    """
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        sing_vals = sparams_to_sing_vals(x) #[num_freqs, num_ports]
+
+        bad_vals = torch.nn.functional.relu(sing_vals - 1)
+
+        return torch.sum(torch.square(bad_vals))
