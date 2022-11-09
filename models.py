@@ -85,7 +85,7 @@ class ENC_DEC(nn.Module):
         self.z += torch.randn_like(self.z) * std
 
 class RES_UNET(nn.Module):
-    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None, use_skip=True):
         """
         Args:
             bs: the batch size
@@ -95,6 +95,8 @@ class RES_UNET(nn.Module):
             nc: number of channels in the output
             optimize_z: whether to optimize over the random input to the network
             kernel_size: can be a list - then must be length num_layers, symmetric, ordered from encoder.
+            num_layers: the number of layers in the encoder/decoder. 
+            use_skip: whether or not to use skip connections within blocks. 
         """
         super().__init__()
 
@@ -145,20 +147,20 @@ class RES_UNET(nn.Module):
         for l in range(num_layers - 1):
             if l == 0:
                 self.encoder.append(
-                    InputResidualConv(in_channels=nc, out_channels=ngf[0], kernel_size=kernel_size[0])
+                    InputResidualConv(in_channels=nc, out_channels=ngf[0], kernel_size=kernel_size[0], use_skip = use_skip)
                 )
             else:
                 self.encoder.append(
-                    ResidualConv(in_channels=ngf[l-1], out_channels=ngf[l], kernel_size=kernel_size[l], downsample=True)
+                    ResidualConv(in_channels=ngf[l-1], out_channels=ngf[l], kernel_size=kernel_size[l], downsample=True, use_skip = use_skip)
                 )
             self.decoder.append(
-                ResidualConv(in_channels=2*ngf[l], out_channels=ngf[l], kernel_size=kernel_size[l], downsample=False)
+                ResidualConv(in_channels=2*ngf[l], out_channels=ngf[l], kernel_size=kernel_size[l], downsample=False, use_skip = use_skip)
             )
             self.upsamples.append(
                 UpConv(in_channels=ngf[l+1], out_channels=ngf[l])
             )
         
-        self.middle = ResidualConv(in_channels=ngf[-2], out_channels=ngf[-1], kernel_size=kernel_size[-1], downsample=True)
+        self.middle = ResidualConv(in_channels=ngf[-2], out_channels=ngf[-1], kernel_size=kernel_size[-1], downsample=True, use_skip = use_skip)
 
     def forward(self, x):
         #encode
@@ -184,8 +186,11 @@ class RES_UNET(nn.Module):
 
         return out
 
-    def forward_with_z(self):
-        return self.forward(self.z)
+    def forward_with_z(self, perturb_noise_std=None):
+        if perturb_noise_std is None:
+            return self.forward(self.z)
+        else:
+            return self.forward(self.z + torch.randn_like(self.z) * perturb_noise_std)
     
     @torch.no_grad()
     def perturb_noise(self, std=0.1):

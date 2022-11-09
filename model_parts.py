@@ -93,8 +93,10 @@ class InputResidualConv(nn.Module):
     Path 2: 1x1 Conv  
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size=3):
+    def __init__(self, in_channels, out_channels, kernel_size=3, use_skip=True):
         super().__init__()
+
+        self.use_skip = use_skip
 
         pad = (kernel_size - 1) // 2
 
@@ -105,12 +107,16 @@ class InputResidualConv(nn.Module):
             nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
         )
 
-        self.input_skip = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
-        )
+        if self.use_skip:
+            self.input_skip = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
+            )
     
     def forward(self, x):
-        return self.input_layer(x) + self.input_skip(x)
+        if self.use_skip:
+            return self.input_layer(x) + self.input_skip(x)
+        else:
+            return self.input_layer(x)
 
 class ResidualConv(nn.Module):
     """
@@ -122,8 +128,10 @@ class ResidualConv(nn.Module):
     AvgPool uses ceil_mode=True so for odd-sized inputs, output_len = (input_len + 1)/2.
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, downsample=False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, downsample=False, use_skip=True):
         super().__init__()
+
+        self.use_skip = use_skip
 
         pad = (kernel_size - 1) // 2
 
@@ -138,10 +146,11 @@ class ResidualConv(nn.Module):
                 nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
             )
 
-            self.conv_skip = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
-                nn.AvgPool1d(2, ceil_mode=True) 
-            )
+            if self.use_skip:
+                self.conv_skip = nn.Sequential(
+                    nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
+                    nn.AvgPool1d(2, ceil_mode=True) 
+                )
 
         else:
             self.conv_block = nn.Sequential(
@@ -153,12 +162,16 @@ class ResidualConv(nn.Module):
                 nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
             )
 
-            self.conv_skip = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
-            )
+            if self.use_skip:
+                self.conv_skip = nn.Sequential(
+                    nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
+                )
     
     def forward(self, x):
-        return self.conv_block(x) + self.conv_skip(x)
+        if self.use_skip:
+            return self.conv_block(x) + self.conv_skip(x)
+        else:
+            return self.conv_block(x)
 
 class UpConv(nn.Module):
     """

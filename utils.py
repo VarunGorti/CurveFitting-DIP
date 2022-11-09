@@ -277,7 +277,7 @@ def matrix_to_network(data_matrix, data_freqs, name, resample_freqs=None):
     net_data.imag = temp_data[..., 1]
 
     #Make the network
-    net_freqs = Frequency.from_f(data_freqs)
+    net_freqs = Frequency.from_f(data_freqs, unit="hz")
 
     net = Network(frequency=net_freqs, s=net_data, name=name)
 
@@ -285,7 +285,7 @@ def matrix_to_network(data_matrix, data_freqs, name, resample_freqs=None):
     if resample_freqs is not None:
         new_freqs = Frequency.from_f(resample_freqs)
         net.resample(new_freqs)
-    
+
     return net
 
 def matrix_to_sparams(data_matrix):
@@ -378,6 +378,43 @@ def to_mag(data):
         mag_data[i] = torch.square(data[i, 0, :]) + torch.square(data[i, 1, :])
     
     return 10 * torch.log10(mag_data)
+
+#NOTE THIS WILL NOT WORK
+#SVD MUST BE PARALLELIZED - BEST WAY IS TO MAKE THE EQUIVALENT REAL MATRIX ISOMORPHISM!
+def sparams_to_sing_vals(sparams_data):
+    """
+    Function for taking 3-D frequency series sparam data and
+        calculating the singular values for every frequency.
+
+    Args:
+        sparams_data: 3D frequnecy series.
+                      Torch tensor [1, 2 * unique_sparams, Freq].
+    """
+    _, num_unique, num_freqs = sparams_data.shape
+    num_unique = num_unique // 2
+
+    num_ports = (-1 + np.sqrt(8*num_unique + 1)) // 2
+    num_ports = int(num_ports)
+
+    A = torch.zeros(num_freqs, num_ports, num_ports, 2, device=sparams_data.device, dtype=sparams_data.dtype)
+
+    for i in range(num_ports):
+        for j in range(i+1):
+            #grab the real and imaginary parts
+            #if they're diagonal, divide by two to account for double addition when we sum transpose
+            if i!=j:
+                A[:, i, j, 0] = sparams_data[0, i*(i+1) + 2*j, :]
+                A[:, i, j, 1] = sparams_data[0, i*(i+1) + 2*j + 1, :]
+            else:
+                A[:, i, j, 0] = sparams_data[0, i*(i+1) + 2*j, :] / 2
+                A[:, i, j, 1] = sparams_data[0, i*(i+1) + 2*j + 1, :] / 2
+    
+    A = A + A.transpose(1, 2)
+    
+    A_complex = torch.complex(A[..., 0], A[..., 1]) #[num_freqs, num_ports, num_ports]
+
+    return torch.linalg.svd(A_complex, compute_uv=False)
+    
 
 class Measurement_MSE_Loss(nn.Module):
     """
