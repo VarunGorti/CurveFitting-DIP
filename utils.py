@@ -414,7 +414,7 @@ def sparams_to_sing_vals(sparams_data):
     A = A + A.transpose(1, 2)
 
     #torch.complex.... makes a [num_freqs, num_ports, num_ports] tensor
-    #NOTE must have compute_UV = True to use gradients
+    #must have compute_UV = True to use gradients
     return torch.linalg.svd(torch.complex(A[..., 0], A[..., 1]))[1]
     
 
