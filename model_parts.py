@@ -259,6 +259,8 @@ class CausalityLayer(nn.Module):
 class PassivityLayer(nn.Module):
     """
     Layer that enforces passivity. 
+        Filters the input to have singular value <= 1 at all frequencies.
+        
     Takes a [N, 2C, L] real-valued input and returns a [N, 2C, L] real output.
 
     Has no trainable parameters.
@@ -285,7 +287,7 @@ class PassivityLayer(nn.Module):
         #output is real and has shape [2L-1]
         double_x = torch.zeros(2*L - 1, device=log_mag.device, dtype=log_mag.dtype)
         double_x[0:L] = log_mag
-        double_x[L:] = log_mag.flip(0)[1:]
+        double_x[L:] = log_mag.flip(-1)[1:]
 
         #(3c) take the FFT
         #output is complex and has shape [2L-1]
