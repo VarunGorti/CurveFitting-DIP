@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import utils
+
 class DoubleConv(nn.Module):
     """(convolution => [BN] => LeakyReLU) * 2"""
 
@@ -203,8 +205,10 @@ def crop_and_cat(x1, x2):
 class CausalityLayer(nn.Module):
     """
     Layer that enforces causality. 
-    Takes a [N, C, FM + 1] real-valued input and returns a [N, 2*C, FK + 1] output.
+    Takes a [N, C, FM + 1] real-valued input and returns a [N, 2*C, FK + 1] real output.
         F is the number of frequency points, M is the extrapolation factor, K is upsampling factor.
+
+    Has no trainable parameters.
     """
 
     def __init__(self, F, K=1):
@@ -249,5 +253,72 @@ class CausalityLayer(nn.Module):
         output = torch.zeros(N, 2*C, truncated_IFFT_analytic.shape[-1], device=x.device, dtype=x.dtype)
         output[:, evens, :] = self.K * truncated_IFFT_analytic.real
         output[:, odds, :] = -1 * self.K * truncated_IFFT_analytic.imag
+
+        return output
+
+class PassivityLayer(nn.Module):
+    """
+    Layer that enforces passivity. 
+    Takes a [N, 2C, L] real-valued input and returns a [N, 2C, L] real output.
+
+    Has no trainable parameters.
+    """
+
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        N, C2, L = x.shape
+
+        #(1) Grab the [L, NUM_PORTS] singular values and isolate the largest [L] - one from each frequency 
+        sing_vals = utils.sparams_to_sing_vals(x)[:, 0]
+
+        #(2) Find the [L] magnitude spectrum 
+        filter_mag = 1. / (1. + nn.functional.relu(sing_vals - 1)) 
+
+        #(3) Get the Phase: Find the Hilbert transform of the log-magnitudes
+
+        #(3a) make the log-magnitude
+        log_mag = torch.log(filter_mag) #[L]
+
+        #(3b) make the double-sided frequency spectrum
+        #output is real and has shape [2L-1]
+        double_x = torch.zeros(2*L - 1, device=log_mag.device, dtype=log_mag.dtype)
+        double_x[0:L] = log_mag
+        double_x[L:] = log_mag.flip(0)[1:]
+
+        #(3c) take the FFT
+        #output is complex and has shape [2L-1]
+        FFT_double_x = torch.fft.fft(double_x) 
+
+        #(3d) make the signal analytical
+        #output is complex and has shape [2L-1]
+        analytic_x = torch.zeros(FFT_double_x.shape[-1], device=FFT_double_x.device, dtype=FFT_double_x.dtype)
+        analytic_x[0] = FFT_double_x[0]
+        analytic_x[1:L] = 2 * FFT_double_x[1:L]
+
+        #(3e) Take the IFFT and truncate
+        #output is complex and has shape [L]
+        IFFT_analytic = torch.fft.ifft(analytic_x)
+        truncated_IFFT_analytic = IFFT_analytic[0:L] 
+
+        #(3f) Grab just the imaginary part of the output to obtain Hilbert
+        #output is real and has shape [L]
+        filter_phase = truncated_IFFT_analytic.imag
+
+        #(4) Make the filter with the magnitude and phase
+        #complex with shape [L]
+        passive_filter = torch.polar(filter_mag, filter_phase) #NOTE check hz vs radians for phase
+
+        #(5) Filter and return
+        #output is [N, 2C, L] 
+        evens = [i for i in range(C2) if i%2 == 0]
+        odds = [i for i in range(C2) if i%2 != 0]
+
+        complex_output = torch.complex(x[:, evens, :], x[:, odds, :]) * passive_filter #[N, C, L] complex times [L] complex
+
+        output = torch.zeros(N, C2, L, device=x.device, dtype=x.dtype)
+        output[:, evens, :] = complex_output.real
+        output[:, odds, :] = complex_output.imag
 
         return output
