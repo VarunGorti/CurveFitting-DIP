@@ -199,3 +199,55 @@ def crop_and_cat(x1, x2):
         return torch.cat([x1[...,:-diff], x2], dim=1)
     else:
         return torch.cat([x1, x2], dim=1)
+
+class CausalityLayer(nn.Module):
+    """
+    Layer that enforces causality. 
+    Takes a [N, C, FM + 1] real-valued input and returns a [N, 2*C, FK + 1] output.
+        F is the number of frequency points, M is the extrapolation factor, K is upsampling factor.
+    """
+
+    def __init__(self, F, K=1):
+        super().__init__()
+
+        self.F = F
+        self.K = K
+    
+    def forward(self, x):
+        #L = FM + 1
+        N, C, L = x.shape
+
+        #(1) make the double-sided frequency spectrum
+        #output is real and has shape [N, C, 2L-1 = 2FM + 1]
+        double_x = torch.zeros(N, C, 2*L - 1, device=x.device, dtype=x.dtype)
+        double_x[..., 0:L] = x
+        double_x[..., L:] = x.flip(-1)[..., 1:]
+
+        #(2) take the FFT
+        #output is complex and has shape [N, C, 2FM + 1]
+        FFT_double_x = torch.fft.fft(double_x) 
+
+        #(3)upsample and make the signal analytic
+        #output is complex and has shape [N, C, 2FMK + K]
+        analytic_x = torch.zeros(N, C, self.K*(FFT_double_x.shape[-1]), device=FFT_double_x.device, dtype=FFT_double_x.dtype)
+        analytic_x[..., 0] = FFT_double_x[..., 0]
+        analytic_x[..., 1:L] = 2 * FFT_double_x[..., 1:L]
+
+        #(3) Take the IFFT and truncate
+        #output is complex and has shape [N, C, FK + 1]
+        #NOTE there might need to be a "+1" in the parenthesis at the end of the second line
+        #   right now this returns a FK-len last dimension, but I think that's actually better
+        IFFT_analytic = torch.fft.ifft(analytic_x)
+        truncated_IFFT_analytic = IFFT_analytic[..., 0:(self.K*self.F)] 
+
+        #(4) Split the signal into real and imaginary parts and return
+        #output is real and has shape [N, 2C, FK + 1]
+        #NOTE see above - current length of the output is FK
+        evens = [i for i in range(2*C) if i%2 == 0]
+        odds = [i for i in range(2*C) if i%2 != 0]
+
+        output = torch.zeros(N, 2*C, truncated_IFFT_analytic.shape[-1], device=x.device, dtype=x.dtype)
+        output[:, evens, :] = self.K * truncated_IFFT_analytic.real
+        output[:, odds, :] = -1 * self.K * truncated_IFFT_analytic.imag
+
+        return output
