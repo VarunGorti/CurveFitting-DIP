@@ -85,7 +85,7 @@ class ENC_DEC(nn.Module):
         self.z += torch.randn_like(self.z) * std
 
 class RES_UNET(nn.Module):
-    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None, use_skip=True):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None, use_skip=True, causal_passive=False):
         """
         Args:
             bs: the batch size
@@ -97,6 +97,8 @@ class RES_UNET(nn.Module):
             kernel_size: can be a list - then must be length num_layers, symmetric, ordered from encoder.
             num_layers: the number of layers in the encoder/decoder. 
             use_skip: whether or not to use skip connections within blocks. 
+            causal_passive: if True, adds a causality and passivity layer at the end of the network.
+                                Also does one more resolution scale at the end of the decoder.
         """
         super().__init__()
 
@@ -110,6 +112,7 @@ class RES_UNET(nn.Module):
         self.nc = nc
         self.optimize_z = optimize_z
         self.kernel_size = kernel_size
+        self.causal_passive = causal_passive
         
         #NOTE (num_layers - 1) is the number of resolution scales (i.e. number of up/down samples)
         #e.g. for num_layers = 5, there are 4 scales - divides original resolution by 2^4 = 16  
@@ -134,11 +137,6 @@ class RES_UNET(nn.Module):
         if not isinstance(ngf, list):
             ngf = [ngf * (l + 1) for l in range(num_layers)]
 
-        self.output = nn.Sequential(
-            OutConv(ngf[0], nc),
-            nn.Tanh()
-        )
-
         #the first encoder layer is not a downsampling layer
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
@@ -161,6 +159,20 @@ class RES_UNET(nn.Module):
             )
         
         self.middle = ResidualConv(in_channels=ngf[-2], out_channels=ngf[-1], kernel_size=kernel_size[-1], downsample=True, use_skip = use_skip)
+
+        if causal_passive:
+            self.output = nn.Sequential(
+                UpConv(in_channels=ngf[0], out_channels=ngf[0]),
+                ResidualConv(in_channels=ngf[0], out_channels=nc//2, kernel_size=1, downsample=False, use_skip=use_skip),
+                nn.Tanh(),
+                CausalityLayer(F=output_size),
+                PassivityLayer()
+            )
+        else:
+            self.output = nn.Sequential(
+                OutConv(ngf[0], nc),
+                nn.Tanh()
+            )
 
     def forward(self, x):
         #encode
