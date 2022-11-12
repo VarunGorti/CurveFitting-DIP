@@ -162,8 +162,8 @@ class RES_UNET(nn.Module):
 
         if causal_passive:
             self.output = nn.Sequential(
-                UpConv(in_channels=ngf[0], out_channels=ngf[0]),
-                ResidualConv(in_channels=ngf[0], out_channels=nc//2, kernel_size=1, downsample=False, use_skip=use_skip),
+                UpConv(in_channels=ngf[0], out_channels=nc),
+                ResidualConv(in_channels=nc, out_channels=nc//2, kernel_size=1, downsample=False, use_skip=use_skip),
                 nn.Tanh(),
                 CausalityLayer(F=output_size),
                 PassivityLayer()
