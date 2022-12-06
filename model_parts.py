@@ -130,22 +130,25 @@ class ResidualConv(nn.Module):
     AvgPool uses ceil_mode=True so for odd-sized inputs, output_len = (input_len + 1)/2.
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, downsample=False, use_skip=True):
+    def __init__(self, in_channels, out_channels, mid_channels=None, kernel_size=3, downsample=False, use_skip=True):
         super().__init__()
 
         self.use_skip = use_skip
 
         pad = (kernel_size - 1) // 2
 
+        if mid_channels is None:
+            mid_channels = out_channels
+
         if downsample:
             self.conv_block = nn.Sequential(
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+                nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
                 nn.AvgPool1d(2, ceil_mode=True), 
-                nn.BatchNorm1d(out_channels, affine=False),
+                nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+                nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
             )
 
             if self.use_skip:
@@ -158,10 +161,10 @@ class ResidualConv(nn.Module):
             self.conv_block = nn.Sequential(
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                nn.BatchNorm1d(out_channels, affine=False),
+                nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+                nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+                nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
             )
 
             if self.use_skip:

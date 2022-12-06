@@ -113,6 +113,7 @@ class RES_UNET(nn.Module):
         self.optimize_z = optimize_z
         self.kernel_size = kernel_size
         self.causal_passive = causal_passive
+        self.use_skip=use_skip
         
         #NOTE (num_layers - 1) is the number of resolution scales (i.e. number of up/down samples)
         #e.g. for num_layers = 5, there are 4 scales - divides original resolution by 2^4 = 16  
@@ -134,8 +135,8 @@ class RES_UNET(nn.Module):
         if not isinstance(kernel_size, list):
             kernel_size = [kernel_size] * num_layers
         
-        if not isinstance(ngf, list):
-            ngf = [ngf * (l + 1) for l in range(num_layers)]
+        if not isinstance(self.ngf, list):
+            self.ngf = [self.ngf * (l + 1) for l in range(num_layers)]
 
         #the first encoder layer is not a downsampling layer
         self.encoder = nn.ModuleList()
@@ -145,32 +146,31 @@ class RES_UNET(nn.Module):
         for l in range(num_layers - 1):
             if l == 0:
                 self.encoder.append(
-                    InputResidualConv(in_channels=nc, out_channels=ngf[0], kernel_size=kernel_size[0], use_skip = use_skip)
+                    InputResidualConv(in_channels=nc, out_channels=self.ngf[0], kernel_size=kernel_size[0], use_skip = use_skip)
                 )
             else:
                 self.encoder.append(
-                    ResidualConv(in_channels=ngf[l-1], out_channels=ngf[l], kernel_size=kernel_size[l], downsample=True, use_skip = use_skip)
+                    ResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=kernel_size[l], downsample=True, use_skip = use_skip)
                 )
             self.decoder.append(
-                ResidualConv(in_channels=2*ngf[l], out_channels=ngf[l], kernel_size=kernel_size[l], downsample=False, use_skip = use_skip)
+                ResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=kernel_size[l], downsample=False, use_skip = use_skip)
             )
             self.upsamples.append(
-                UpConv(in_channels=ngf[l+1], out_channels=ngf[l])
+                UpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l])
             )
         
-        self.middle = ResidualConv(in_channels=ngf[-2], out_channels=ngf[-1], kernel_size=kernel_size[-1], downsample=True, use_skip = use_skip)
+        self.middle = ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=kernel_size[-1], downsample=True, use_skip = use_skip)
 
         if causal_passive:
             self.output = nn.Sequential(
-                UpConv(in_channels=ngf[0], out_channels=nc),
-                ResidualConv(in_channels=nc, out_channels=nc//2, kernel_size=1, downsample=False, use_skip=use_skip),
-                nn.Tanh(),
+                UpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
+                ResidualConv(in_channels=self.ngf[0], out_channels=nc//2, mid_channels=nc, kernel_size=1, downsample=False, use_skip=use_skip),
                 CausalityLayer(F=output_size),
                 PassivityLayer()
             )
         else:
             self.output = nn.Sequential(
-                OutConv(ngf[0], nc),
+                OutConv(self.ngf[0], nc),
                 nn.Tanh()
             )
 
@@ -203,6 +203,17 @@ class RES_UNET(nn.Module):
             return self.forward(self.z)
         else:
             return self.forward(self.z + torch.randn_like(self.z) * perturb_noise_std)
+    
+    def make_causal_passive(self):
+        if self.causal_passive:
+            return
+
+        self.output = nn.Sequential(
+            UpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
+            ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
+            CausalityLayer(F=self.output_size),
+            PassivityLayer()
+        )
     
     @torch.no_grad()
     def perturb_noise(self, std=0.1):
