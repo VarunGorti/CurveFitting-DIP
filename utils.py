@@ -49,7 +49,7 @@ def get_inds(problem_type, length, num_kept_samples):
 
     Args:
         problem_type: What type of inpainting problem we are dealing with.
-                      String in {"random", "equal", "forecast", "full"}.
+                      String in {"random", "equal", "forecast", "full", "log"}.
         length: The original length of the signal.
                 Int.
         num_kept_samples: The number (or proportion) of samples to keep.
@@ -73,6 +73,9 @@ def get_inds(problem_type, length, num_kept_samples):
         kept_inds = np.arange(0, num_kept_samples)
     elif problem_type=="full":
         kept_inds = np.arange(0, length)
+    elif problem_type=="log":
+        kept_inds = np.geomspace(1, length, num=num_kept_samples, dtype=int)
+        kept_inds = kept_inds - 1 #we do this since geomspace can't take 0 as start index
     else:
         raise NotImplementedError("THIS PROBLEM TYPE IS UNSUPPORTED")
     
