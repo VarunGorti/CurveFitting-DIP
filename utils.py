@@ -78,17 +78,17 @@ def get_inds(problem_type, length, num_kept_samples):
         kept_inds = kept_inds - 1 
         kept_inds = np.sort(kept_inds) #making the list unique
         for i in range(1, len(kept_inds)):
-            if kept_inds[i-1] == kept_inds[i]:
-                kept_inds[i] = kept_inds[i] + 1 
+            if kept_inds[i] <= kept_inds[i-1]:
+                kept_inds[i] = kept_inds[i-1] + 1 
     elif problem_type=="sqrt": 
-        r = (length - 1) / ((num_kept_samples - 1)**2) #base quadratic factor
+        r = (length - 1.) / ((num_kept_samples - 1.)**2) #base quadratic factor
         kept_inds = [round(r * (s**2)) for s in range(num_kept_samples - 1)]
         kept_inds.append(length-1)
         kept_inds = np.array(kept_inds)
         kept_inds = np.sort(kept_inds) #making the list unique
         for i in range(1, len(kept_inds)):
-            if kept_inds[i-1] == kept_inds[i]:
-                kept_inds[i] = kept_inds[i] + 1 
+            if kept_inds[i] <= kept_inds[i-1]:
+                kept_inds[i] = kept_inds[i-1] + 1 
     else:
         raise NotImplementedError("THIS PROBLEM TYPE IS UNSUPPORTED")
     
