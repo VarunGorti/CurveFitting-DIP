@@ -49,7 +49,7 @@ def get_inds(problem_type, length, num_kept_samples):
 
     Args:
         problem_type: What type of inpainting problem we are dealing with.
-                      String in {"random", "equal", "forecast", "full", "log"}.
+                      String in {"random", "equal", "forecast", "full", "log", "sqrt"}.
         length: The original length of the signal.
                 Int.
         num_kept_samples: The number (or proportion) of samples to keep.
@@ -73,9 +73,22 @@ def get_inds(problem_type, length, num_kept_samples):
         kept_inds = np.arange(0, num_kept_samples)
     elif problem_type=="full":
         kept_inds = np.arange(0, length)
-    elif problem_type=="log":
-        kept_inds = np.geomspace(1, length, num=num_kept_samples, dtype=int)
-        kept_inds = kept_inds - 1 #we do this since geomspace can't take 0 as start index
+    elif problem_type=="log": #NOTE fix collisions here and for sqrt
+        kept_inds = np.geomspace(1, length, num=num_kept_samples, dtype=int) #geomspace can't take 0 as start index
+        kept_inds = kept_inds - 1 
+        kept_inds = np.sort(kept_inds) #making the list unique
+        for i in range(1, len(kept_inds)):
+            if kept_inds[i-1] == kept_inds[i]:
+                kept_inds[i] = kept_inds[i] + 1 
+    elif problem_type=="sqrt": 
+        r = (length - 1) / ((num_kept_samples - 1)**2) #base quadratic factor
+        kept_inds = [round(r * (s**2)) for s in range(num_kept_samples - 1)]
+        kept_inds.append(length-1)
+        kept_inds = np.array(kept_inds)
+        kept_inds = np.sort(kept_inds) #making the list unique
+        for i in range(1, len(kept_inds)):
+            if kept_inds[i-1] == kept_inds[i]:
+                kept_inds[i] = kept_inds[i] + 1 
     else:
         raise NotImplementedError("THIS PROBLEM TYPE IS UNSUPPORTED")
     
