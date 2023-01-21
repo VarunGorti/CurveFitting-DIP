@@ -260,7 +260,7 @@ class VectorFitter:
                 break
         
         end_time = time.time()
-        self._status_update(f"Fit completed in (end_time - start_time), using {n_evals}, resulting" +
+        self._status_update(f"Fit completed in {end_time - start_time}, using {n_evals}, resulting" +
                             f" in a fit with {best_fit.n_poles} and error={best_fit.error_vs_sampled.error} vs samples" +
                             f" and error={best_fit.error_vs_ground_truth.error} vs ground truth.")
         return best_fit
