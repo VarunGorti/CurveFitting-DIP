@@ -69,75 +69,7 @@ def get_inds(problem_type, length, num_kept_samples):
     
     return np.sort(kept_inds), np.sort(missing_inds)
 
-#NOTE DEPRECATED
-def plot_signal_and_measurements(x, y, kept_inds, fname=None):
-    """
-    Given a ground truth signal, plot the signal, interpolated observations, and raw observations.
-
-    Args:
-        x: Signal to plot. 
-           Tensor with shape [1, NC, L].
-        y: Observations to plot.
-           Tensor with shape [1, NC, M], with M <= L. 
-        kept_inds: Indices kept from the signal, used as horizontal axis to plot observations.
-                   Array with len M.
-        fname: Filename to save the plot as. Default=None, in which case will do plt.show().
-               String, ending in desired file extension (e.g. .png).
-    """
-    NC = x.shape[1]
-
-    fig, axes = plt.subplots(3,1, figsize=(16, 12))
-    axes = axes.flatten()
-
-    axes[0].plot(x[0,0,:].cpu().flatten(), label="real")
-    if NC == 2:
-        axes[0].plot(x[0,1,:].cpu().flatten(), label="imaginary")
-    axes[0].legend()
-    axes[0].set_title("ORIGINAL SIGNAL")
-
-    axes[1].plot(kept_inds, y[0,0,:].cpu().flatten(), label="real")
-    if NC == 2:
-        axes[1].plot(kept_inds, y[0,1,:].cpu().flatten(), label="imaginary")
-    axes[1].legend()
-    axes[1].set_title("OBSERVED MEASUREMENTS - LINEAR INTERPOLATION")
-
-    axes[2].scatter(kept_inds, y[0,0,:].cpu().flatten(), label="real")
-    if NC == 2:
-        axes[2].scatter(kept_inds, y[0,1,:].cpu().flatten(), label="imaginary")
-    axes[2].legend()
-    axes[2].set_title("OBSERVED MEASUREMENTS")
-
-    if fname is None:
-        plt.show()
-    else:
-        plt.savefig(fname=fname, bbox_inches='tight')
-
-    return
-
-#NOTE DEPRECATED
-def get_paddings(in_len):
-    """
-    Given an input length, gives left and right padding factors to get to the 
-        next closest power of 2 length (with centering).
-    
-    Args:
-        in_len: Original length.
-                Int.
-    
-    Returns:
-        [L_PAD, R_PAD]: Left and right padding factors to center original length
-                            in next highest power of 2 length.
-                        Int, Int.
-    """
-    PADDED_LEN = 2**int(np.ceil(np.log2(in_len)))
-
-    DIFF = (PADDED_LEN - in_len)
-
-    L_PAD, R_PAD = DIFF // 2, DIFF - DIFF // 2
-
-    return L_PAD, R_PAD
-
-def grab_chip_data(root_pth, chip_num, resample=False):
+def grab_chip_data(root_pth, chip_num):
     """
     Given a root path and a chip number, grab all the relevant info for a chip.
     Converts the data type of the output to float32.
@@ -145,8 +77,6 @@ def grab_chip_data(root_pth, chip_num, resample=False):
     Args:
         root_pth: Root of the folder containing chip info.
         chip_num: Chip number.
-        resmple: If set to True, will also return a version of the ground truth data
-                    that has been resampled to have (2^N >= #OG_Freqs) frequency values.
     
     Returns:
         out_dict: Dictionary with all relevant chip data.
@@ -162,14 +92,14 @@ def grab_chip_data(root_pth, chip_num, resample=False):
                       "y_matrix": Ground truth matrix sampled at the observed frequencies.
                                   (4D numpy array).
     """
-    from skrf import Network, Frequency
+    from skrf import Network
     import copy
     
     #Grab the correct folder
     chip_num = str(chip_num) if chip_num > 9 else "0" + str(chip_num)
     fname = os.path.join(root_pth, "case"+chip_num)
     
-    def grab_network_info(folder_pth, net_str, resample=False):
+    def grab_network_info(folder_pth, net_str):
         """
         Helper function that takes a string, searches a given folder for touchstone 
             files matching the string, grabs the S-param and frequency data, and 
@@ -190,18 +120,6 @@ def grab_chip_data(root_pth, chip_num, resample=False):
         data_path = os.path.join(folder_pth, children)
         
         out_network = Network(data_path)
-
-        if resample:
-            og_matrix_re = out_network.s.real
-            og_matrix_im = out_network.s.imag
-            og_matrix = copy.deepcopy(np.stack((og_matrix_re, og_matrix_im), axis=-1))
-
-            og_freqs = copy.deepcopy(out_network.f.squeeze())
-            
-            og_len = len(og_freqs)
-            new_len = 2 ** int(np.ceil(np.log2(og_len)))
-            
-            out_network.resample(new_len)
         
         out_matrix_re = out_network.s.real
         out_matrix_im = out_network.s.imag
@@ -209,20 +127,14 @@ def grab_chip_data(root_pth, chip_num, resample=False):
 
         out_freqs = out_network.f.squeeze()
         
-        if resample:
-            return og_matrix, og_freqs, out_matrix, out_freqs
-        else: 
-            return out_matrix, out_freqs
+        return out_matrix, out_freqs
     
     #now make the proper filename strings and grab the gt, VF, and y data
     gt_str = str(chip_num) + ".s"
     vf_str = str(chip_num) + ".HLAS.s"
     y_str = "SIEMENS_AFS_SAMPLE_POINT_SIMULATIONS.s"
 
-    if resample:
-        og_matrix, og_freqs, gt_matrix, gt_freqs = grab_network_info(fname, gt_str, resample=resample)
-    else:
-        gt_matrix, gt_freqs = grab_network_info(fname, gt_str)    
+    gt_matrix, gt_freqs = grab_network_info(fname, gt_str)    
     vf_matrix, _ = grab_network_info(fname, vf_str)
     y_matrix, y_freqs = grab_network_info(fname, y_str)
 
@@ -231,10 +143,6 @@ def grab_chip_data(root_pth, chip_num, resample=False):
                 "vf_matrix": vf_matrix.astype('float32'),
                 "y_matrix": y_matrix.astype('float32'),
                 "y_freqs": y_freqs}
-
-    if resample:
-        out_dict["og_matrix"] = og_matrix.astype('float32')
-        out_dict["og_freqs"] = og_freqs
             
     return out_dict
 
