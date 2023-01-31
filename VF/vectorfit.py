@@ -225,6 +225,7 @@ class VectorFitter:
             # Perform the vector fit
             vf = rf.VectorFitting(sampled_network)
             vf.vector_fit(n_poles_cmplx=n_poles)
+            # vf.passivity_enforce()
             self._status_update(f"  Fitting took {vf.wall_clock_time} seconds.")
             
             # Get the fitted network at the sampled points
