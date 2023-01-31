@@ -52,7 +52,7 @@ class Down(nn.Module):
 
         pad = (kernel_size - 1) // 2
         
-        self.maxpool_conv = nn.Sequential(
+        self.down_conv = nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.AvgPool1d(2), 
             nn.BatchNorm1d(out_channels, affine=False),
@@ -61,7 +61,7 @@ class Down(nn.Module):
         )
 
     def forward(self, x):
-        return self.maxpool_conv(x)
+        return self.down_conv(x)
 
 class Up_NoCat(nn.Module):
     """Upscaling then double conv, with no concatenation"""

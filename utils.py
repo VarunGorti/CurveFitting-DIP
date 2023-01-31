@@ -16,33 +16,6 @@ def set_all_seeds(seed):
 
     return
 
-#NOTE DEPRECATED
-def get_single_series(data_path, sample_num, sparam_num, num_chan=2):
-    """
-    Grabs the Real or (Real, Im) series for a single sample and a single s-parameter.
-
-    Args:
-        data_path: Array filled with individual chip tensors.
-                   Array with tensors of shape [L, 10, 2] (samples, S-Params, real/im).
-        sample_num: Chip number to get.  
-                    Int <= len(data).
-        sparam_num: S-parameter number to grab for the given chip.
-                    Int in [0, 9].
-        num_chan: Set to 1 to grab just the real or 2 to grab real and imaginary responses.
-                  Int in {1, 2}.
-    Returns:
-        x: Tensor with shape [1, num_chan, L].
-    """
-    x = torch.load(data_path)[sample_num][:, sparam_num, :] #(LEN, 2)
-    
-    if num_chan == 1:
-        x = x[:, 0].unsqueeze(1) #(LEN, 1)
-    
-    x = x.unsqueeze(0) #(1, LEN, 1/2)
-    x = x.permute(0, 2, 1) #(1, 1/2, LEN)
-    
-    return x
-
 def get_inds(problem_type, length, num_kept_samples):
     """
     Given a number of samples to keep and a problem type, returns indices to keep from a list.
@@ -515,16 +488,3 @@ class Smoothing_Loss(nn.Module):
                 
                 return torch.sum(rloss_per_chan) 
                 
-class Passive_Loss(nn.Module):
-    """
-    Loss function that penalizes singular values larger than 1
-    """
-    def __init__(self):
-        super().__init__()
-    
-    def forward(self, x):
-        sing_vals = sparams_to_sing_vals(x) #[num_freqs, num_ports]
-
-        bad_vals = torch.nn.functional.relu(sing_vals - 1)
-
-        return torch.sum(torch.square(bad_vals))
