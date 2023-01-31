@@ -93,7 +93,6 @@ def grab_chip_data(root_pth, chip_num):
                                   (4D numpy array).
     """
     from skrf import Network
-    import copy
     
     #Grab the correct folder
     chip_num = str(chip_num) if chip_num > 9 else "0" + str(chip_num)
@@ -148,7 +147,7 @@ def grab_chip_data(root_pth, chip_num):
 
 def matrix_to_network(data_matrix, data_freqs, name, resample_freqs=None):
     """
-    Takes a raw 4D sparam matrix and returns a Network.
+    Takes a raw 4D sparam matrix and returns a Scikit-RF Network object.
 
     Args:
         data_matrix: Raw 4D sparam matrix. 
@@ -164,7 +163,6 @@ def matrix_to_network(data_matrix, data_freqs, name, resample_freqs=None):
         net: A scikit-RF Network object.
     """
     from skrf import Network, Frequency
-    import scipy
     
     #Convert the data properly to complex
     temp_data = data_matrix.detach().cpu().numpy().astype('float64')
@@ -313,7 +311,6 @@ def sparams_to_sing_vals(sparams_data):
     #torch.complex.... makes a [num_freqs, num_ports, num_ports] tensor
     #must have compute_UV = True to use gradients
     return torch.linalg.svd(torch.complex(A[..., 0], A[..., 1]))[1]
-    
 
 class Measurement_MSE_Loss(nn.Module):
     """
