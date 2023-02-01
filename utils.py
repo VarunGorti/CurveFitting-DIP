@@ -246,6 +246,38 @@ def sparams_to_matrix(sparams_data):
 
     return out_mat
 
+def sparams_to_mag(sparams, get_phase=False, in_db=False):
+    """
+    Computes the magnitude, and optionally the phase, of a given complex signal.
+
+    Args:
+        sparams: Signal with real and imaginary components.
+                 Torch tensor [1, 2*num_unique_sparams, F]. 
+                 We expect the real and imaginary components for each s-parameter to be adjacent
+                    channels in the second axis. 
+        get_phase: If True, returns the phase of the signal as well. 
+        in_db: If True, will return the magnitude in Decibels.  
+
+    Returns:
+        mag: Magnitude of the given signal. If in_db is True, will be in Decibels.
+             Torch tensor [1, num_unique_sparams, F]. 
+        phase (optional): Phase of the given signal in radians. Only returned if get_phase is true.
+                          Torch tensor [1, num_unique_sparams, F]. 
+    """    
+
+    x_complex = torch.complex(sparams[:, ::2, :], sparams[:, 1::2, :]) #evens are real, odds are imaginary
+
+    x_mag = torch.abs(x_complex)
+    if in_db:
+        x_mag = 20 * torch.log10(x_mag) #multiply here by 20 instead of 10 because abs is a square root term
+
+    if get_phase:
+        x_phase = torch.angle(x_complex)
+        return x_mag, x_phase
+    else:
+        return x_mag
+
+#NOTE deprecated old method
 def to_mag(data):
     """
     Converts a given signal in re/im to magnitude in Db.
