@@ -1,4 +1,4 @@
-name: base
+name: DIP
 channels:
   - defaults
 dependencies:
