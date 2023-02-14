@@ -69,6 +69,86 @@ def get_inds(problem_type, length, num_kept_samples):
     
     return np.sort(kept_inds), np.sort(missing_inds)
 
+def get_network_from_file(root_pth, chip_num):
+    """
+    Grabs an SK-RF Network and its associated metadata from a given root path
+        and chip number.
+    Different from grab_chip_data since this function returns the raw Network object
+        and not np arrays. 
+
+    Args:
+        root_pth: Root of the folder containing chip info.
+        chip_num: Chip number.
+
+    Returns:
+        out_dict: Dictionary with relevant entries.
+                  Entries:
+                    network: The ground truth network.
+                             Scikit-RF Network object. 
+                    fmin: Minimum frequency sampled.
+                          Float.
+                    fmax: Max frequency sampled.
+                          Float. 
+                    length: The length of the channels.
+                            String.
+                    sweep: The spacing between sampled points.
+                           String.
+                    port_pairs: The paied ports on the chip.
+                                Array of tuples.
+    """
+    from skrf import Network
+
+    #Grab the correct folder
+    chip_num = str(chip_num) if chip_num > 9 else "0" + str(chip_num)
+    fname = os.path.join(root_pth, "case"+chip_num)
+
+    net_str = str(chip_num) + ".s"
+    desc_str = "description.txt"
+
+    #grab the correct file we want
+    children = os.listdir(fname)
+
+    net_fpth = [f for f in children if net_str in f][0]
+    net_fpth = os.path.join(fname, net_fpth)
+
+    desc_fpth = [f for f in children if desc_str in f][0]
+    desc_fpth = os.path.join(fname, desc_fpth)
+
+    #grab the network and metadata
+    out_network = Network(net_fpth)
+
+    with open(desc_fpth) as file:
+        lines = [line.rstrip() for line in file]
+
+    fmin = None
+    fmax = None
+    length = None
+    sweep = None
+    port_pairs = []
+
+    for line in lines:
+        if "fmin" in line:
+            fmin = float(line.split(" ")[-1])
+        elif "fmax" in line:
+            fmax = float(line.split(" ")[-1])
+        elif "length" in line:
+            length = line.split(" ")[-1]
+        elif "sweep" in line:
+            sweep = line.split(" ")[-1]
+        elif "port_pair" in line:
+            port1 = int(line.split(" ")[-2])
+            port2 = int(line.split(" ")[-1])
+            port_pairs.append((port1, port2))
+    
+    out_dict = {"network": out_network,
+                "fmin": fmin,
+                "fmax": fmax,
+                "length": length,
+                "sweep": sweep,
+                "port_pairs": port_pairs}
+    
+    return out_dict
+
 def grab_chip_data(root_pth, chip_num):
     """
     Given a root path and a chip number, grab all the relevant info for a chip.
