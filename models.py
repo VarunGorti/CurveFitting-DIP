@@ -296,6 +296,15 @@ class RESNET_BACKBONE(nn.Module):
             i -= 1
 
         return out
+
+    def make_clone(self):
+        clone_net = RESNET_BACKBONE(ngf=self.ngf, 
+                                    ngf_in_out=self.ngf_in_out, 
+                                    kernel_size=self.kernel_size, 
+                                    num_layers=self.num_layers)
+        clone_net.load_state_dict(self.state_dict())
+
+        return clone_net
     
 class RESNET_HEAD(nn.Module):
     def __init__(self, nz, ngf_in_out, nc, output_size, kernel_size, causal, passive):
