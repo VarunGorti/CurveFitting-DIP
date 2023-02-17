@@ -4,6 +4,8 @@ import torch.nn as nn
 import random
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 import time
 from tqdm import tqdm
 
@@ -14,6 +16,10 @@ from models import RESNET_BACKBONE, RESNET_HEAD, MODULAR_RESNET
 
 
 def grab_sparams(root_pth, chip_num):
+    """
+    Returns a torch tensor of s-parameters with shape [1, 2*num_unique_sparams, num_freqs]
+        given a path and a chip number.
+    """
     #first grab the chip
     chip_dict = utils.get_network_from_file(root_pth, chip_num)
     
@@ -45,6 +51,11 @@ def fit_DIP(model, y, z,
             lr, num_iter, 
             train_loss, train_reg, reg_lambda=0, 
             start_noise=None, noise_decay=None):
+    """
+    Runs DIP for a single set of given measurements.
+
+    Returns the fitted network and the final output.
+    """
     
     #we can make the optmizer within the function since we don't need the stats between fits
     optim = torch.optim.Adam(model.parameters(), lr=lr)
@@ -75,6 +86,11 @@ def fit_DIP(model, y, z,
 
 def grab_data_and_net(data_root, chip_num, measurement_spacing, num_measurements,
                       ngf, kernel_size, causal, passive, backbone):
+    """
+    Grabs the ground truth s-parameters for a chip along with measurements, adjoint
+        solution as the network input, the indices of the measurements, and a network 
+        head for the dimension of the data. 
+    """
     
     x = grab_sparams(data_root, chip_num)
 
@@ -104,11 +120,18 @@ def grab_data_and_net(data_root, chip_num, measurement_spacing, num_measurements
 
 def train_step(data_root, chip_num, measurement_spacing, num_measurements, ngf,
                kernel_size, causal, passive, backbone, device, lr_inner, 
-               num_iters_inner, reg_lambda_inner, start_noise_inner, noise_decay_inner):
+               num_iters_inner, reg_lambda_inner, start_noise_inner, noise_decay_inner,
+               plot_output=False):
+    """
+    Performs DIP on a single sample: grabs the measurements, fits the network, calculates the loss.
+
+    Returns the fitted network and the test mse for the sample. 
+    """
     #sample chip
-    x, y, z, kept_inds, net = grab_data_and_net(data_root=data_root, chip_num=chip_num, measurement_spacing=measurement_spacing, 
-                                     num_measurements=num_measurements, ngf=ngf, kernel_size=kernel_size, 
-                                     causal=causal, passive=passive, backbone=backbone)
+    x, y, z, kept_inds, net = grab_data_and_net(data_root=data_root, chip_num=chip_num, 
+                                measurement_spacing=measurement_spacing, 
+                                num_measurements=num_measurements, ngf=ngf, kernel_size=kernel_size, 
+                                causal=causal, passive=passive, backbone=backbone)
     x = x.to(device)
     y = y.to(device)
     z = z.to(device)
@@ -129,12 +152,42 @@ def train_step(data_root, chip_num, measurement_spacing, num_measurements, ngf,
     with torch.no_grad():
         test_mse = nn.MSELoss()(x_hat, x).item()
     
+        if plot_output:
+            x_mag = utils.sparams_to_mag(x)
+            out_mag = utils.sparams_to_mag(x_hat)
+            dip_errors_mag = x_mag - out_mag 
+
+            _, axes = plt.subplots(3,1, figsize=(8, 6))
+            axes = axes.flatten()
+
+            for i in range(x_mag.shape[1]):
+                axes[0].plot(x_mag[0,i].cpu(), label=str(i))
+            axes[0].set_title("Ground Truth Magnitude Spectrum")
+            axes[0].set_ylim(0,1)
+
+            for i in range(x_mag.shape[1]):
+                axes[1].plot(out_mag[0,i].detach().cpu(), label=str(i))
+            axes[1].set_title("DIP Output Magnitude Spectrum")
+            axes[1].set_ylim(0,1)
+                
+            for i in range(x_mag.shape[1]):
+                axes[2].plot(dip_errors_mag[0,i].detach().cpu(), label=str(i))
+            axes[2].set_title("DIP Errors Magnitude Spectrum")
+            axes[2].set_ylim(-1,1)
+            
+            plt.show()
+    
     return updated_net, test_mse
 
 def reptile(backbone, data_root, device, measurement_spacing, num_measurements, 
             num_epochs, lr_outer, test_inds, train_inds, 
             lr_inner, num_iters_inner, reg_lambda_inner, start_noise_inner, noise_decay_inner,    
             ngf, kernel_size, causal, passive):
+    """
+    Performs REPTILE-style updates for a given backbone network over a training dataset. 
+
+    Returns the updated network, test losses for the inner optimization, and test losses for the meta opt. 
+    """
     
     optim = torch.optim.Adam(backbone.parameters(), lr=lr_outer)
     
@@ -181,63 +234,18 @@ def reptile(backbone, data_root, device, measurement_spacing, num_measurements,
             new_backbone = updated_net.backbone.cpu()
 
             for p, new_p in zip(backbone.parameters(), new_backbone.parameters()):
-                p.grad = p.data - new_p.data
+                if type(p.grad) == type(None):
+                    dummy_loss = torch.sum(p)
+                    dummy_loss.backward()
+                
+                p.grad.copy_(p - new_p)
+
+                #TODO convert the loss to a centered l2 loss using parameters_to_vector
+                #also only print epoch mean loss
+                #also print the norm of the gradient 
+                #also try supervised learning
             
             optim.step()
             optim.zero_grad()
     
     return backbone, inner_test_losses, outer_test_losses
-
-#########################################################################################
-def outer_loop(backbone, lr_outer, train_inds, data_root, device, 
-               ngf, kernel_size, causal, passive, 
-               measurement_spacing, num_measurements,
-               lr_inner, num_iters_inner, reg_lambda_inner, start_noise_inner, noise_decay_inner):
-    
-    optim = torch.optim.Adam(backbone.parameters(), lr=lr_outer)
-    
-    inner_test_losses = []
-    
-    train_shuffle = np.random.permutation(train_inds)
-    
-    for t in tqdm(train_shuffle):
-        #sample chip
-        x, y, z, kept_inds, net = grab_data_and_net(data_root=data_root, chip_num=t, measurement_spacing=measurement_spacing, 
-                                         num_measurements=num_measurements, ngf=ngf, kernel_size=kernel_size, 
-                                         causal=causal, passive=passive, backbone=backbone)
-        x = x.to(device)
-        y = y.to(device)
-        z = z.to(device)
-        net = net.to(device)
-        
-        #set up losses and regularisations
-        criterion = utils.Measurement_MSE_Loss(kept_inds=kept_inds, per_param=True, reduction="mean")
-        criterion = criterion.to(device)
-
-        regularizer = utils.Smoothing_Loss(per_param=True, reduction="mean")
-        regularizer = regularizer.to(device)
-        
-        #Run DIP and get the metrics 
-        updated_net, x_hat = fit_DIP(model=net, y=y, z=z, 
-                                     lr=lr_inner, num_iter=num_iters_inner, 
-                                     train_loss=criterion, train_reg=regularizer, reg_lambda=reg_lambda_inner, 
-                                     start_noise=start_noise_inner, noise_decay=noise_decay_inner)
-        new_backbone = updated_net.backbone.cpu() 
-        
-        with torch.no_grad():
-            inner_test_mse = nn.MSELoss()(x_hat, x).item()
-            inner_test_losses.append(inner_test_mse)
-            
-            print("Inner Test MSE: ", inner_test_mse)
-            
-        #Calculate the gradient and update
-        for p, new_p in zip(backbone.parameters(), new_backbone.parameters()):
-            if p.grad is None:
-                p.grad = p.data - new_p.data
-            else:
-                p.grad += p.data - new_p.data
-        
-        optim.step()
-        optim.zero_grad()
-    
-    return backbone, inner_test_losses
