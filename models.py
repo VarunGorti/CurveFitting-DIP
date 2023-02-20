@@ -214,7 +214,8 @@ class RES_UNET(nn.Module):
             UpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
             ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
             CausalityLayer(F=self.output_size),
-            PassivityLayer()
+            # PassivityLayer()
+            nn.tanh()
         )
         
     @torch.no_grad()
