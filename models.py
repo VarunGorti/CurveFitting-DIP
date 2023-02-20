@@ -180,9 +180,7 @@ class RES_UNET(nn.Module):
         #encode
         out = x
         intermediate_outs = []
-        for i, enc_layer in enumerate(self.encoder):
-            if i != 0 :
-                out = self.drop_layer(out) 
+        for enc_layer in self.encoder:
             out = enc_layer(out)
             intermediate_outs.append(out)
         
@@ -192,7 +190,6 @@ class RES_UNET(nn.Module):
         #decode
         i = -1
         for up_layer, dec_layer in zip(self.upsamples[::-1], self.decoder[::-1]):
-            out = self.drop_layer(out)
             out = up_layer(out)
             out = crop_and_cat(out, intermediate_outs[i])
             out = dec_layer(out)
