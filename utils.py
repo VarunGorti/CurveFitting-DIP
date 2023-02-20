@@ -379,12 +379,6 @@ class Measurement_MSE_Loss(nn.Module):
                 rmse_per_chan = torch.sqrt(mse_per_chan) #[1, 2 * N_sparams]
                 
                 return torch.mean(rmse_per_chan) 
-            
-            elif self.reduction == "sum":
-                sse_per_chan = torch.sum(square_error, dim=2) #[1, 2 * N_sparams]
-                rsse_per_chan = torch.sqrt(sse_per_chan) #[1, 2 * N_sparams]
-                
-                return torch.sum(rsse_per_chan) 
 
 class Smoothing_Loss(nn.Module):
     """
