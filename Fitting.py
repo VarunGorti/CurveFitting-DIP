@@ -1,15 +1,11 @@
 import torch
 import torch.nn as nn
 
-import random
 import numpy as np
 
 import matplotlib.pyplot as plt
 
-import time
-from tqdm import tqdm
-
-from skrf import Network, Frequency
+from tqdm.auto import tqdm
 
 import utils
 from models import RESNET_BACKBONE, RESNET_HEAD, MODULAR_RESNET
@@ -193,59 +189,74 @@ def reptile(backbone, data_root, device, measurement_spacing, num_measurements,
     
     inner_test_losses = []
     outer_test_losses = []
-    
-    for epoch in range(num_epochs):
+    meta_losses = []
 
-        print("STARTING EPOCH " + str(epoch) + "\n")
+    epoch_pbar = tqdm(range(num_epochs))
+    for epoch in epoch_pbar:
+        epoch_pbar.set_description(f"Epoch {epoch}")
+
+        inner_test_losses_epoch = []
+        outer_test_losses_epoch = []
+        meta_losses_epoch = []
 
         #testing - don't update parameters, just track the metrics
-        print("TESTING\n")
+        testing_pbar = tqdm(test_inds)
+        for test_chip_ind in testing_pbar:
+            testing_pbar.set_description(f"Testing - Sample {test_chip_ind}")
 
-        for test_chip_ind in tqdm(test_inds):
             _, outer_test_mse = train_step(data_root=data_root, chip_num=test_chip_ind, 
                                            measurement_spacing=measurement_spacing, num_measurements=num_measurements, 
                                            ngf=ngf, kernel_size=kernel_size, causal=causal, passive=passive, 
                                            backbone=backbone, device=device, lr_inner=lr_inner, 
                                            num_iters_inner=num_iters_inner, reg_lambda_inner=reg_lambda_inner, 
                                            start_noise_inner=start_noise_inner, noise_decay_inner=noise_decay_inner)
-
+            #update progress
             outer_test_losses.append(outer_test_mse)
+            outer_test_losses_epoch.append(outer_test_mse)
 
-            print("CHIP " + str(test_chip_ind) + " TEST MSE: " + str(outer_test_mse) + "\n")
+            testing_pbar.set_postfix({'sample mse': outer_test_mse,
+                                      'epoch mse': np.mean(outer_test_losses_epoch)})
+            epoch_pbar.set_postfix({'mean outer mse': np.mean(outer_test_losses), 
+                                    'mean inner mse': 'N/A',
+                                    'mean meta loss': 'N/A'})
         
         #training - update params and track metrics
-        print("TRAINING\n")
+        training_pbar = tqdm(np.random.permutation(train_inds))
+        for train_chip_ind in training_pbar:
+            training_pbar.set_description(f"Training - Sample {train_chip_ind}")
 
-        train_shuffle = np.random.permutation(train_inds)
-
-        for train_chip_ind in tqdm(train_shuffle):
             updated_net, inner_test_mse = train_step(data_root=data_root, chip_num=train_chip_ind, 
                                            measurement_spacing=measurement_spacing, num_measurements=num_measurements, 
                                            ngf=ngf, kernel_size=kernel_size, causal=causal, passive=passive, 
                                            backbone=backbone, device=device, lr_inner=lr_inner, 
                                            num_iters_inner=num_iters_inner, reg_lambda_inner=reg_lambda_inner, 
                                            start_noise_inner=start_noise_inner, noise_decay_inner=noise_decay_inner)
-
-            inner_test_losses.append(inner_test_mse)
-
-            print("CHIP " + str(train_chip_ind) + " TEST MSE: " + str(inner_test_mse) + "\n")
-
             #update params
             new_backbone = updated_net.backbone.cpu()
+            new_backbone.requires_grad_(False)
 
-            for p, new_p in zip(backbone.parameters(), new_backbone.parameters()):
-                if type(p.grad) == type(None):
-                    dummy_loss = torch.sum(p)
-                    dummy_loss.backward()
-                
-                p.grad.copy_(p - new_p)
+            params_cur = nn.utils.parameters_to_vector(backbone.parameters())
+            params_new = nn.utils.parameters_to_vector(new_backbone.parameters())
 
-                #TODO convert the loss to a centered l2 loss using parameters_to_vector
-                #also only print epoch mean loss
-                #also print the norm of the gradient 
-                #also try supervised learning
-            
+            meta_loss = 0.5 * torch.sum((params_cur - params_new)**2)
+            meta_loss.backward()
+
             optim.step()
             optim.zero_grad()
-    
-    return backbone, inner_test_losses, outer_test_losses
+
+            #update progress bar
+            inner_test_losses.append(inner_test_mse)
+            inner_test_losses_epoch.append(inner_test_mse)
+
+            meta_losses.append(meta_loss.item())
+            meta_losses_epoch.append(meta_loss.item())
+
+            training_pbar.set_postfix({'sample mse': inner_test_mse,
+                                       'epoch mse': np.mean(inner_test_losses_epoch),
+                                       'sample metaloss': meta_loss.item(),
+                                       'epoch metaloss': np.mean(meta_losses_epoch)})
+            epoch_pbar.set_postfix({'mean outer mse': np.mean(outer_test_losses), 
+                                    'mean inner mse': np.mean(inner_test_losses),
+                                    'mean meta loss': np.mean(meta_losses)})
+
+    return backbone, inner_test_losses, outer_test_losses, meta_losses
