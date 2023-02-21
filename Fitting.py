@@ -80,6 +80,7 @@ def fit_DIP(model, y, z,
     
     return model, out
 
+@torch.no_grad()
 def grab_data_and_net(data_root, chip_num, measurement_spacing, num_measurements,
                       ngf, kernel_size, causal, passive, backbone):
     """
@@ -175,17 +176,19 @@ def train_step(data_root, chip_num, measurement_spacing, num_measurements, ngf,
     
     return updated_net, test_mse
 
-def reptile(backbone, data_root, device, measurement_spacing, num_measurements, 
-            num_epochs, lr_outer, test_inds, train_inds, 
-            lr_inner, num_iters_inner, reg_lambda_inner, start_noise_inner, noise_decay_inner,    
-            ngf, kernel_size, causal, passive):
+def reptile(backbone, data_root, device, test_inds, train_inds, num_epochs, lr_meta, 
+            ngf, kernel_size, causal, passive,
+            measurement_spacing_inner, num_measurements_inner, lr_inner,
+            num_iters_inner, reg_lambda_inner, start_noise_inner, noise_decay_inner,
+            measurement_spacing_outer, num_measurements_outer, lr_outer,
+            num_iters_outer, reg_lambda_outer, start_noise_outer, noise_decay_outer):
     """
     Performs REPTILE-style updates for a given backbone network over a training dataset. 
 
     Returns the updated network, test losses for the inner optimization, and test losses for the meta opt. 
     """
     
-    optim = torch.optim.Adam(backbone.parameters(), lr=lr_outer)
+    optim = torch.optim.Adam(backbone.parameters(), lr=lr_meta)
     
     inner_test_losses = []
     outer_test_losses = []
@@ -205,11 +208,11 @@ def reptile(backbone, data_root, device, measurement_spacing, num_measurements,
             testing_pbar.set_description(f"Testing - Sample {test_chip_ind}")
 
             _, outer_test_mse = train_step(data_root=data_root, chip_num=test_chip_ind, 
-                                           measurement_spacing=measurement_spacing, num_measurements=num_measurements, 
+                                           measurement_spacing=measurement_spacing_outer, num_measurements=num_measurements_outer, 
                                            ngf=ngf, kernel_size=kernel_size, causal=causal, passive=passive, 
-                                           backbone=backbone, device=device, lr_inner=lr_inner, 
-                                           num_iters_inner=num_iters_inner, reg_lambda_inner=reg_lambda_inner, 
-                                           start_noise_inner=start_noise_inner, noise_decay_inner=noise_decay_inner)
+                                           backbone=backbone, device=device, lr_inner=lr_outer, 
+                                           num_iters_inner=num_iters_outer, reg_lambda_inner=reg_lambda_outer, 
+                                           start_noise_inner=start_noise_outer, noise_decay_inner=noise_decay_outer)
             #update progress
             outer_test_losses.append(outer_test_mse)
             outer_test_losses_epoch.append(outer_test_mse)
@@ -226,7 +229,7 @@ def reptile(backbone, data_root, device, measurement_spacing, num_measurements,
             training_pbar.set_description(f"Training - Sample {train_chip_ind}")
 
             updated_net, inner_test_mse = train_step(data_root=data_root, chip_num=train_chip_ind, 
-                                           measurement_spacing=measurement_spacing, num_measurements=num_measurements, 
+                                           measurement_spacing=measurement_spacing_inner, num_measurements=num_measurements_inner, 
                                            ngf=ngf, kernel_size=kernel_size, causal=causal, passive=passive, 
                                            backbone=backbone, device=device, lr_inner=lr_inner, 
                                            num_iters_inner=num_iters_inner, reg_lambda_inner=reg_lambda_inner, 

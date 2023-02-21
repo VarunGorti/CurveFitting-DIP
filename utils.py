@@ -46,7 +46,7 @@ def get_inds(problem_type, length, num_kept_samples):
         kept_inds = np.arange(0, num_kept_samples)
     elif problem_type=="full":
         kept_inds = np.arange(0, length)
-    elif problem_type=="log": #NOTE fix collisions here and for sqrt
+    elif problem_type=="log": 
         kept_inds = np.geomspace(1, length, num=num_kept_samples, dtype=int) #geomspace can't take 0 as start index
         kept_inds = kept_inds - 1 
         kept_inds = np.sort(kept_inds) #making the list unique

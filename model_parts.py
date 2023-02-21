@@ -179,15 +179,15 @@ class ResidualConv(nn.Module):
 
 class UpConv(nn.Module):
     """
-     Linear Upsampling -> 1x1 conv
+     Linear Upsampling -> 1D conv
     """
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
 
         self.up_conv = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='linear'),
-            nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
+            nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, bias=False) 
         )
 
     def forward(self, x):
