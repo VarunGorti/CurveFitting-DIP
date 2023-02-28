@@ -59,11 +59,11 @@ def run_dip(args):
     #make loss fns and optimizer
     optim = torch.optim.Adam(args.model.parameters(), lr=args.lr)
     
-    criterion = utils.Measurement_MSE_Loss(kept_inds=args.kept_inds, per_param=True, reduction=args.reduction)
+    criterion = utils.Measurement_MSE_Loss(kept_inds=args.kept_inds, per_param=False, reduction=args.reduction)
     criterion = criterion.to(args.device)
 
     if (args.reg_type == "smoothing") and (args.reg_lambda > 0):
-        regularizer = utils.Smoothing_Loss(per_param=True, reduction=args.reduction)
+        regularizer = utils.Smoothing_Loss(per_param=False, reduction=args.reduction, order=args.reg_order, norm=args.reg_norm)
         regularizer = regularizer.to(args.device)
     elif (args.reg_type == "centered_wd") and (args.reg_lambda > 0):
         center_net = args.model.backbone if args.reg_target == "backbone" else args.model
