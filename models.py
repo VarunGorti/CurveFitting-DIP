@@ -145,20 +145,36 @@ class RES_UNET(nn.Module):
         self.upsample_dropouts = nn.ModuleList()
 
         for l in range(self.num_layers - 1):
-            if l == 0:
-                self.encoder.append(
-                    InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
+            if l > (self.num_layers - 1) / 2:
+                if l == 0:
+                    self.encoder.append(
+                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
+                    )
+                else:
+                    self.encoder.append(
+                        ResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
+                    )
+                self.decoder.append(
+                    ResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=False, use_skip = self.use_skip, p_dropout=self.p_dropout)
+                )
+                self.upsamples.append(
+                    UpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l], p_dropout=self.p_dropout)
                 )
             else:
-                self.encoder.append(
-                    ResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
+                if l == 0:
+                    self.encoder.append(
+                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
+                    )
+                else:
+                    self.encoder.append(
+                        ResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=True, use_skip = self.use_skip, p_dropout=0)
+                    )
+                self.decoder.append(
+                    ResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=False, use_skip = self.use_skip, p_dropout=0)
                 )
-            self.decoder.append(
-                ResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=False, use_skip = self.use_skip, p_dropout=self.p_dropout)
-            )
-            self.upsamples.append(
-                UpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l], p_dropout=self.p_dropout)
-            )
+                self.upsamples.append(
+                    UpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l], p_dropout=0)
+                )
 
         
         self.middle = ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
