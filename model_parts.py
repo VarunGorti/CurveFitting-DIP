@@ -260,7 +260,7 @@ class CausalityLayer(nn.Module):
 
         return output
     
-class NewCaualityLayer(nn.Module):
+class NewCausalityLayer(nn.Module):
     def __init__(self, F, K=1):
         super().__init__()
 

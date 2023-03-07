@@ -307,7 +307,7 @@ class RESNET_BACKBONE(nn.Module):
         return clone_net
     
 class RESNET_HEAD(nn.Module):
-    def __init__(self, nz, ngf_in_out, nc, output_size, kernel_size, causal, passive, k=1):
+    def __init__(self, nz, ngf_in_out, nc, output_size, kernel_size, causal, passive, k=1, new_causality=False):
         """
         Acts as the input and output layers for a Resnet generator.
 
@@ -334,6 +334,7 @@ class RESNET_HEAD(nn.Module):
         self.causal = causal
         self.passive = passive
         self.k = k
+        self.new_causality = new_causality
         
         ###########
         #NET STUFF#
@@ -344,16 +345,28 @@ class RESNET_HEAD(nn.Module):
                                        use_skip = False)
         
         if self.causal:
-            output_start = nn.Sequential(
-                UpConv(in_channels=self.ngf_in_out, out_channels=self.ngf_in_out),
-                ResidualConv(in_channels=self.ngf_in_out, 
-                             out_channels=self.nc//2, 
-                             mid_channels=self.nc, 
-                             kernel_size=self.kernel_size, 
-                             downsample=False, 
-                             use_skip=False),
-                CausalityLayer(F=self.output_size, K=self.k)
-            )
+            if self.new_causality:
+                output_start = nn.Sequential(
+                    UpConv(in_channels=self.ngf_in_out, out_channels=self.ngf_in_out),
+                    ResidualConv(in_channels=self.ngf_in_out, 
+                                out_channels=self.nc//2, 
+                                mid_channels=self.nc, 
+                                kernel_size=self.kernel_size, 
+                                downsample=False, 
+                                use_skip=False),
+                    NewCausalityLayer(F=self.output_size, K=self.k)
+                )
+            else:
+                output_start = nn.Sequential(
+                    UpConv(in_channels=self.ngf_in_out, out_channels=self.ngf_in_out),
+                    ResidualConv(in_channels=self.ngf_in_out, 
+                                out_channels=self.nc//2, 
+                                mid_channels=self.nc, 
+                                kernel_size=self.kernel_size, 
+                                downsample=False, 
+                                use_skip=False),
+                    CausalityLayer(F=self.output_size, K=self.k)
+                )
         else:
             output_start = OutConv(self.ngf_in_out, self.nc)
         
@@ -381,7 +394,10 @@ class RESNET_HEAD(nn.Module):
         return self.input(x)
     
     def forward_output(self, x):
-        return self.output(x)
+        if self.k == 1:
+            return self.output(x)
+        elif self.k > 1:
+            return self.output(x)[..., ::self.k]
 
 class MODULAR_RESNET(nn.Module):
     def __init__(self, backbone, head):
