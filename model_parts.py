@@ -1,7 +1,11 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import utils
+
+from bayesian_torch.layers.variational_layers.conv_variational import Conv1dReparameterization
+from bayesian_torch.layers.batchnorm import BatchNorm1dLayer
 
 class DoubleConv(nn.Module):
     """(convolution => [BN] => LeakyReLU) * 2"""
@@ -15,10 +19,10 @@ class DoubleConv(nn.Module):
             mid_channels = out_channels
         
         self.double_conv = nn.Sequential(
-            nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+            nn.Conv1d(in_channels, mid_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(mid_channels, affine=False),
             nn.LeakyReLU(),
-            nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+            nn.Conv1d(mid_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU()
         )
@@ -35,7 +39,7 @@ class SingleConv(nn.Module):
         pad = (kernel_size - 1) // 2
         
         self.single_conv = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU()
         )
@@ -52,11 +56,11 @@ class Down(nn.Module):
         pad = (kernel_size - 1) // 2
         
         self.down_conv = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
             nn.AvgPool1d(2), 
             nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU(),
-            SingleConv(out_channels, out_channels, kernel_size=kernel_size)
+            SingleConv(out_channels, out_channels, kernel_size=3)
         )
 
     def forward(self, x):
@@ -69,7 +73,7 @@ class Up_NoCat(nn.Module):
         super().__init__()
 
         self.up = nn.Upsample(scale_factor=2, mode='linear')
-        self.conv = DoubleConv(in_channels, out_channels, in_channels, kernel_size=kernel_size)
+        self.conv = DoubleConv(in_channels, out_channels, in_channels, kernel_size=3)
 
     def forward(self, x):
         x = self.up(x)
@@ -83,6 +87,16 @@ class OutConv(nn.Module):
         super().__init__()
         
         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
+
+    def forward(self, x):
+        return self.conv(x)
+    
+class BayesianOutConv(nn.Module):
+    """1x1 convolutions to get correct output channels"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        
+        self.conv = Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
 
     def forward(self, x):
         return self.conv(x)
@@ -102,15 +116,47 @@ class InputResidualConv(nn.Module):
         pad = (kernel_size - 1) // 2
 
         self.input_layer = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU(),
-            nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+            nn.Conv1d(out_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False)
         )
 
         if self.use_skip:
             self.input_skip = nn.Sequential(
                 nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
+            )
+    
+    def forward(self, x):
+        if self.use_skip:
+            return self.input_layer(x) + self.input_skip(x)
+        else:
+            return self.input_layer(x)
+        
+class BayesianInputResidualConv(nn.Module):
+    """
+    Takes the input through 2 paths and sums the output.
+    Path 1: Conv -> BN -> LeakyReLU -> Conv
+    Path 2: 1x1 Conv  
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size=3, use_skip=True):
+        super().__init__()
+
+        self.use_skip = use_skip
+
+        pad = (kernel_size - 1) // 2
+
+        self.input_layer = nn.Sequential(
+            Conv1dReparameterization(in_channels, out_channels, kernel_size=3, padding=pad, bias=False),
+            BatchNorm1dLayer(out_channels, affine=False),
+            BayesianLeakyReLU(),
+            Conv1dReparameterization(out_channels, out_channels, kernel_size=3, padding=pad, bias=False)
+        )
+
+        if self.use_skip:
+            self.input_skip = nn.Sequential(
+                Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
             )
     
     def forward(self, x):
@@ -143,12 +189,12 @@ class ResidualConv(nn.Module):
             self.conv_block = nn.Sequential(
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+                nn.Conv1d(in_channels, mid_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
                 nn.Dropout(p=p_dropout),
                 nn.AvgPool1d(2, ceil_mode=True), 
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+                nn.Conv1d(mid_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False)
             )
 
             if self.use_skip:
@@ -162,10 +208,10 @@ class ResidualConv(nn.Module):
             self.conv_block = nn.Sequential(
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
+                nn.Conv1d(in_channels, mid_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False),
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
-                nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
+                nn.Conv1d(mid_channels, out_channels, kernel_size=3, padding=pad, padding_mode='reflect', bias=False)
             )
 
             if self.use_skip:
@@ -179,6 +225,65 @@ class ResidualConv(nn.Module):
         else:
             return self.conv_block(x)
 
+class BayesianResidualConv(nn.Module):
+    """
+    Takes the input through 2 paths and sums the output.
+    Path 1: BN -> LeakyReLU -> Conv -> AvgPool -> BN -> LReLU -> Conv
+    Path 2: 1x1 Conv -> AvgPool.
+    If argument "downsample" is false, then no avg pooling    
+
+    AvgPool uses ceil_mode=True so for odd-sized inputs, output_len = (input_len + 1)/2.
+    """
+
+    def __init__(self, in_channels, out_channels, mid_channels=None, kernel_size=3, downsample=False, use_skip=True, p_dropout=0.0):
+        super().__init__()
+
+        self.use_skip = use_skip
+
+        pad = (kernel_size - 1) // 2
+
+        if mid_channels is None:
+            mid_channels = out_channels
+
+        if downsample:
+            self.conv_block = nn.Sequential(
+                BatchNorm1dLayer(in_channels, affine=False),
+                BayesianLeakyReLU(),
+                Conv1dReparameterization(in_channels, mid_channels, kernel_size=3, padding=pad, bias=False),
+                nn.AvgPool1d(2, ceil_mode=True), 
+                BatchNorm1dLayer(mid_channels, affine=False),
+                BayesianLeakyReLU(),
+                Conv1dReparameterization(mid_channels, out_channels, kernel_size=3, padding=pad, bias=False)
+            )
+
+            if self.use_skip:
+                self.conv_skip = nn.Sequential(
+                    Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False),
+                    nn.AvgPool1d(2, ceil_mode=True) 
+                )
+
+        else:
+            self.conv_block = nn.Sequential(
+                BatchNorm1dLayer(in_channels, affine=False),
+                BayesianLeakyReLU(),
+                Conv1dReparameterization(in_channels, mid_channels, kernel_size=3, padding=pad, bias=False),
+                BatchNorm1dLayer(mid_channels, affine=False),
+                BayesianLeakyReLU(),
+                Conv1dReparameterization(mid_channels, out_channels, kernel_size=3, padding=pad, bias=False)
+            )
+
+            if self.use_skip:
+                self.conv_skip = nn.Sequential(
+                    Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False) 
+                )
+    
+    def forward(self, x):
+        if self.use_skip:
+            return self.conv_block(x) + self.conv_skip(x)
+        else:
+            return self.conv_block(x)
+
+
 class UpConv(nn.Module):
     """
      Linear Upsampling -> 1x1 conv
@@ -191,6 +296,22 @@ class UpConv(nn.Module):
             nn.Dropout(p=p_dropout),
             nn.Upsample(scale_factor=2, mode='linear'),
             nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
+        )
+
+    def forward(self, x):
+        return self.up_conv(x)
+    
+class BayesianUpConv(nn.Module):
+    """
+     Linear Upsampling -> 1x1 conv
+    """
+
+    def __init__(self, in_channels, out_channels, p_dropout=0.0):
+        super().__init__()
+
+        self.up_conv = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='linear'),
+            Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False) 
         )
 
     def forward(self, x):
@@ -329,3 +450,22 @@ class PassivityLayer(nn.Module):
         output[:, odds, :] = complex_output.imag
 
         return output
+
+'''
+wrapper for LeakyReLU
+'''
+
+class BayesianLeakyReLU(nn.Module):
+    __constants__ = ['inplace']
+
+    def __init__(self, inplace=False):
+        super(BayesianLeakyReLU, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, input):
+        kl = 0
+        return F.leaky_relu(input[0], inplace=self.inplace), kl
+
+    def extra_repr(self):
+        inplace_str = 'inplace=True' if self.inplace else ''
+        return inplace_str
