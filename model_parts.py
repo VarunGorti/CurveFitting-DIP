@@ -99,7 +99,11 @@ class BayesianOutConv(nn.Module):
         self.conv = Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
 
     def forward(self, x):
-        return self.conv(x)
+        print("0!!")
+        x, kl_sum = x
+        out, kl = self.conv(x)
+        kl_sum += kl
+        return out, kl_sum
 
 class InputResidualConv(nn.Module):
     """
@@ -147,23 +151,35 @@ class BayesianInputResidualConv(nn.Module):
 
         pad = (kernel_size - 1) // 2
 
-        self.input_layer = nn.Sequential(
-            Conv1dReparameterization(in_channels, out_channels, kernel_size=3, padding=pad, bias=False),
-            BatchNorm1dLayer(out_channels, affine=False),
-            BayesianLeakyReLU(),
-            Conv1dReparameterization(out_channels, out_channels, kernel_size=3, padding=pad, bias=False)
-        )
 
-        if self.use_skip:
-            self.input_skip = nn.Sequential(
-                Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
-            )
+        self.conv1 = Conv1dReparameterization(in_channels, out_channels, kernel_size=3, padding=pad, bias=False)
+        self.bn1 = nn.BatchNorm1d(out_channels, affine=False)
+        self.leaky_relu = BayesianLeakyReLU()
+        self.conv2 = Conv1dReparameterization(out_channels, out_channels, kernel_size=3, padding=pad, bias=False)
+
+        self.input_skip = Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
+
     
     def forward(self, x):
+        print("1!!")
+        kl_sum = 0
+        temp = x
+        
+        out, kl = self.conv1(x)
+        kl_sum += kl
+        out = self.bn1(out)
+        out = self.leaky_relu(out)
+        out, kl = self.conv2(out)
+        kl_sum += kl
+
         if self.use_skip:
-            return self.input_layer(x) + self.input_skip(x)
-        else:
-            return self.input_layer(x)
+            skip_out, kl = self.input_skip(temp)
+            kl_sum += kl
+            out += skip_out
+        
+        return out, kl_sum
+
+
 
 class ResidualConv(nn.Module):
     """
@@ -245,43 +261,61 @@ class BayesianResidualConv(nn.Module):
         if mid_channels is None:
             mid_channels = out_channels
 
-        if downsample:
-            self.conv_block = nn.Sequential(
-                BatchNorm1dLayer(in_channels, affine=False),
-                BayesianLeakyReLU(),
-                Conv1dReparameterization(in_channels, mid_channels, kernel_size=3, padding=pad, bias=False),
-                nn.AvgPool1d(2, ceil_mode=True), 
-                BatchNorm1dLayer(mid_channels, affine=False),
-                BayesianLeakyReLU(),
-                Conv1dReparameterization(mid_channels, out_channels, kernel_size=3, padding=pad, bias=False)
-            )
+        self.downsample = downsample
+        self.bn1 = nn.BatchNorm1d(in_channels, affine=False)
+        self.leaky_relu1 = BayesianLeakyReLU()
+        self.conv1 = Conv1dReparameterization(in_channels, mid_channels, kernel_size=3, padding=pad, bias=False)
+        self.bn2 = nn.BatchNorm1d(mid_channels, affine=False)
+        self.leaky_relu2 = BayesianLeakyReLU()
+        self.conv2 = Conv1dReparameterization(mid_channels, out_channels, kernel_size=3, padding=pad, bias=False)
 
-            if self.use_skip:
-                self.conv_skip = nn.Sequential(
-                    Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False),
-                    nn.AvgPool1d(2, ceil_mode=True) 
-                )
+        self.pool1 = nn.AvgPool1d(2, ceil_mode=True)
+        self.pool2 = nn.AvgPool1d(2, ceil_mode=True)
 
-        else:
-            self.conv_block = nn.Sequential(
-                BatchNorm1dLayer(in_channels, affine=False),
-                BayesianLeakyReLU(),
-                Conv1dReparameterization(in_channels, mid_channels, kernel_size=3, padding=pad, bias=False),
-                BatchNorm1dLayer(mid_channels, affine=False),
-                BayesianLeakyReLU(),
-                Conv1dReparameterization(mid_channels, out_channels, kernel_size=3, padding=pad, bias=False)
-            )
+        self.conv_skip = Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
 
-            if self.use_skip:
-                self.conv_skip = nn.Sequential(
-                    Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False) 
-                )
     
     def forward(self, x):
-        if self.use_skip:
-            return self.conv_block(x) + self.conv_skip(x)
+        print("2!!")
+        if not self.downsample:
+            x, kl_sum = x
+            temp = x
+            out = self.bn1(x)
+            out = self.leaky_relu1(x)
+            out, kl = self.conv1(x)
+            kl_sum += kl
+            out = self.bn2(x)
+            out = self.leaky_relu2(x)
+            out, kl = self.conv2(x)
+            kl_sum += kl
+
+            if self.use_skip:
+                skip_out, kl = self.input_skip(temp)
+                kl_sum += kl
+                out += skip_out
+            
+            return out, kl_sum
         else:
-            return self.conv_block(x)
+            x, kl_sum = x
+            temp = x
+            out = self.bn1(x)
+            out = self.leaky_relu1(x)
+            out, kl = self.conv1(x)
+            kl_sum += kl
+            out = self.pool1(out)
+            out = self.bn2(x)
+            out = self.leaky_relu2(x)
+            out, kl = self.conv2(x)
+            kl_sum += kl
+
+            if self.use_skip:
+                skip_out, kl = self.input_skip(temp)
+                kl_sum += kl
+                skip_out = self.pool2(skip_out)
+                out += skip_out
+            
+            return out, kl_sum
+
 
 
 class UpConv(nn.Module):
@@ -315,7 +349,11 @@ class BayesianUpConv(nn.Module):
         )
 
     def forward(self, x):
-        return self.up_conv(x)
+        print("3!!")
+        x, kl_sum = x
+        out, kl = self.up_conv(x)
+        kl_sum += kl
+        return out, kl_sum
 
 def crop_and_cat(x1, x2):
     """
@@ -463,8 +501,7 @@ class BayesianLeakyReLU(nn.Module):
         self.inplace = inplace
 
     def forward(self, input):
-        kl = 0
-        return F.leaky_relu(input[0], inplace=self.inplace), kl
+        return F.leaky_relu(input[0], inplace=self.inplace)
 
     def extra_repr(self):
         inplace_str = 'inplace=True' if self.inplace else ''

@@ -305,11 +305,8 @@ class BAYESIAN_RES_UNET(nn.Module):
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
         self.upsamples = nn.ModuleList()
-        self.encoder_dropouts = nn.ModuleList()
-        self.upsample_dropouts = nn.ModuleList()
 
         for l in range(self.num_layers - 1):
-            if l > (self.num_layers - 1) / 2:
                 if l == 0:
                     self.encoder.append(
                         BayesianInputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
@@ -323,21 +320,6 @@ class BAYESIAN_RES_UNET(nn.Module):
                 )
                 self.upsamples.append(
                     BayesianUpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l], p_dropout=self.p_dropout)
-                )
-            else:
-                if l == 0:
-                    self.encoder.append(
-                        BayesianInputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
-                    )
-                else:
-                    self.encoder.append(
-                        BayesianResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=True, use_skip = self.use_skip, p_dropout=0)
-                    )
-                self.decoder.append(
-                    BayesianResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=False, use_skip = self.use_skip, p_dropout=0)
-                )
-                self.upsamples.append(
-                    BayesianUpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l], p_dropout=0)
                 )
 
         
@@ -391,8 +373,8 @@ class BAYESIAN_RES_UNET(nn.Module):
             return
 
         self.output = nn.Sequential(
-            UpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
-            ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
+            BayesianUpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
+            BayesianResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
             CausalityLayer(F=self.output_size),
             # PassivityLayer()
             nn.tanh()
