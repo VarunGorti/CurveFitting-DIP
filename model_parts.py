@@ -259,6 +259,52 @@ class CausalityLayer(nn.Module):
         output[:, odds, :] = -1 * self.K * truncated_IFFT_analytic.imag
 
         return output
+    
+class NewCaualityLayer(nn.Module):
+    def __init__(self, F, K=1):
+        super().__init__()
+
+        self.F = F #number of output frequencies
+        self.K = K
+    
+    def forward(self, x):
+        #x is the extrapolated real part of the frequency response
+        #L = FM, where M is the extrapolation factor
+        #C is the number of unique s-parameters
+        N, C, L = x.shape
+        
+        #(1) Make the double-sided frequency spectrum
+        #output is real and has size [N, C, 2L-1 = 2FM - 1]
+        #NOTE different from paper - we do [x[0,...,FM-1], x[FM-1,...,1]] - this makes signal really even!
+        double_x = torch.zeros(N, C, 2*L - 1, device=x.device, dtype=x.dtype)
+        double_x[..., 0:L] = x
+        double_x[..., L:] = x.flip(-1)[..., 0:-1] #exclude the x[0] term at the end - we only want one x[0]!
+
+        #(2) Take the FFT of the double-sided spectrum
+        #output is complex and has the shape [N, C, 2L-1 = 2FM-1]
+        FFT_double_x = torch.fft.fft(double_x) 
+
+        #(3) Upsample and make the signal analytic
+        #output is complex and has shape [N, C, 2LK-K = 2FMK-K]
+        analytic_x = torch.zeros(N, C, self.K*(FFT_double_x.shape[-1]), device=FFT_double_x.device, dtype=FFT_double_x.dtype)
+        analytic_x[..., 0] = FFT_double_x[..., 0]
+        analytic_x[..., 1:L] = 2 * FFT_double_x[..., 1:L]
+
+        #(4) Take the IFFT and truncate
+        #output is complex and has shape [N, C, FK]
+        IFFT_analytic = torch.fft.ifft(analytic_x)
+        truncated_IFFT_analytic = IFFT_analytic[..., 0:(self.K*self.F)]
+
+        #(5) Split the signal into the real and imaginary components and return
+        #output is real and has the shape [N, C, FK]
+        evens = [i for i in range(2*C) if i%2 == 0]
+        odds = [i for i in range(2*C) if i%2 != 0]
+
+        output = torch.zeros(N, 2*C, truncated_IFFT_analytic.shape[-1], device=x.device, dtype=x.dtype)
+        output[:, evens, :] = self.K * truncated_IFFT_analytic.real
+        output[:, odds, :] = -1 * self.K * truncated_IFFT_analytic.imag
+
+        return output
 
 class PassivityLayer(nn.Module):
     """

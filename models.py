@@ -307,7 +307,7 @@ class RESNET_BACKBONE(nn.Module):
         return clone_net
     
 class RESNET_HEAD(nn.Module):
-    def __init__(self, nz, ngf_in_out, nc, output_size, kernel_size, causal, passive):
+    def __init__(self, nz, ngf_in_out, nc, output_size, kernel_size, causal, passive, k=1):
         """
         Acts as the input and output layers for a Resnet generator.
 
@@ -319,6 +319,7 @@ class RESNET_HEAD(nn.Module):
             kernel_size: length of the convolutional kernel in the input and output.
             causal: if True, adds a causality layer at the end of the network.
             passive: if True, adds a passivity layer at the end of the network.
+            k: upsampling factor for the causality layer
         """
         super().__init__()
         
@@ -332,6 +333,7 @@ class RESNET_HEAD(nn.Module):
         self.kernel_size = kernel_size
         self.causal = causal
         self.passive = passive
+        self.k = k
         
         ###########
         #NET STUFF#
@@ -350,7 +352,7 @@ class RESNET_HEAD(nn.Module):
                              kernel_size=self.kernel_size, 
                              downsample=False, 
                              use_skip=False),
-                CausalityLayer(F=self.output_size)
+                CausalityLayer(F=self.output_size, K=self.k)
             )
         else:
             output_start = OutConv(self.ngf_in_out, self.nc)
@@ -358,7 +360,8 @@ class RESNET_HEAD(nn.Module):
         if self.passive:
             output_end = PassivityLayer()
         else:
-            output_end = nn.Tanh()
+            # output_end = nn.Tanh()
+            output_end = nn.Identity()
         
         self.output = nn.Sequential(
             output_start,
