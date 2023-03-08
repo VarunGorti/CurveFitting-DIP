@@ -134,7 +134,6 @@ class InputResidualConv(nn.Module):
             out = self.input_layer(x) + self.input_skip(x)
         else:
             out = self.input_layer(x)
-        print(out.shape)
         return out
         
 class BayesianInputResidualConv(nn.Module):
