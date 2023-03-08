@@ -99,11 +99,9 @@ class BayesianOutConv(nn.Module):
         self.conv = Conv1dReparameterization(in_channels, out_channels, kernel_size=1, bias=False)
 
     def forward(self, x):
-        print("0!!")
-        x, kl_sum = x
+        # print("Out conv!")
         out, kl = self.conv(x)
-        kl_sum += kl
-        return out, kl_sum
+        return out, kl
 
 class InputResidualConv(nn.Module):
     """
@@ -133,9 +131,11 @@ class InputResidualConv(nn.Module):
     
     def forward(self, x):
         if self.use_skip:
-            return self.input_layer(x) + self.input_skip(x)
+            out = self.input_layer(x) + self.input_skip(x)
         else:
-            return self.input_layer(x)
+            out = self.input_layer(x)
+        print(out.shape)
+        return out
         
 class BayesianInputResidualConv(nn.Module):
     """
@@ -161,9 +161,8 @@ class BayesianInputResidualConv(nn.Module):
 
     
     def forward(self, x):
-        print("1!!")
+        # print("InputResConv!")
         kl_sum = 0
-        temp = x
         
         out, kl = self.conv1(x)
         kl_sum += kl
@@ -173,10 +172,10 @@ class BayesianInputResidualConv(nn.Module):
         kl_sum += kl
 
         if self.use_skip:
-            skip_out, kl = self.input_skip(temp)
+            skip_out, kl = self.input_skip(x)
             kl_sum += kl
             out += skip_out
-        
+
         return out, kl_sum
 
 
@@ -276,40 +275,37 @@ class BayesianResidualConv(nn.Module):
 
     
     def forward(self, x):
-        print("2!!")
+        # print("ResConv!")
+        kl_sum = 0
         if not self.downsample:
-            x, kl_sum = x
-            temp = x
             out = self.bn1(x)
-            out = self.leaky_relu1(x)
-            out, kl = self.conv1(x)
+            out = self.leaky_relu1(out)
+            out, kl = self.conv1(out)
             kl_sum += kl
-            out = self.bn2(x)
-            out = self.leaky_relu2(x)
-            out, kl = self.conv2(x)
+            out = self.bn2(out)
+            out = self.leaky_relu2(out)
+            out, kl = self.conv2(out)
             kl_sum += kl
 
             if self.use_skip:
-                skip_out, kl = self.input_skip(temp)
+                skip_out, kl = self.input_skip(x)
                 kl_sum += kl
                 out += skip_out
             
             return out, kl_sum
         else:
-            x, kl_sum = x
-            temp = x
             out = self.bn1(x)
-            out = self.leaky_relu1(x)
-            out, kl = self.conv1(x)
+            out = self.leaky_relu1(out)
+            out, kl = self.conv1(out)
             kl_sum += kl
             out = self.pool1(out)
-            out = self.bn2(x)
-            out = self.leaky_relu2(x)
-            out, kl = self.conv2(x)
+            out = self.bn2(out)
+            out = self.leaky_relu2(out)
+            out, kl = self.conv2(out)
             kl_sum += kl
 
             if self.use_skip:
-                skip_out, kl = self.input_skip(temp)
+                skip_out, kl = self.input_skip(x)
                 kl_sum += kl
                 skip_out = self.pool2(skip_out)
                 out += skip_out
@@ -349,11 +345,9 @@ class BayesianUpConv(nn.Module):
         )
 
     def forward(self, x):
-        print("3!!")
-        x, kl_sum = x
+        # print("UpConv!")
         out, kl = self.up_conv(x)
-        kl_sum += kl
-        return out, kl_sum
+        return out, kl
 
 def crop_and_cat(x1, x2):
     """
@@ -501,7 +495,7 @@ class BayesianLeakyReLU(nn.Module):
         self.inplace = inplace
 
     def forward(self, input):
-        return F.leaky_relu(input[0], inplace=self.inplace)
+        return F.leaky_relu(input, inplace=self.inplace)
 
     def extra_repr(self):
         inplace_str = 'inplace=True' if self.inplace else ''

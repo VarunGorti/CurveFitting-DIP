@@ -326,41 +326,53 @@ class BAYESIAN_RES_UNET(nn.Module):
         self.middle = BayesianResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
 
         if self.causal_passive:
-            self.output = nn.Sequential(
+            self.output = nn.ModuleList([
                 BayesianUpConv(in_channels=self.ngf[0], out_channels=self.ngf[0], p_dropout=self.p_dropout),
                 BayesianResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip, p_dropout=self.p_dropout),
                 CausalityLayer(F=self.output_size),
                 nn.Tanh() # PassivityLayer()
-            )
+            ])
         else:
-            self.output = nn.Sequential(
+            self.output = nn.ModuleList([
                 BayesianOutConv(self.ngf[0], self.nc),
                 nn.Tanh()
-            )
+            ])
 
     def forward(self, x):
         #encode
         out = x
+        kl_sum = 0
         intermediate_outs = []
         for enc_layer in self.encoder:
-            out = enc_layer(out)
+            out, kl = enc_layer(out)
+            kl_sum += kl
             intermediate_outs.append(out)
         
         #bottleneck
-        out = self.middle(out)
+        out, kl = self.middle(out)
+        kl_sum += kl
 
         #decode
         i = -1
         for up_layer, dec_layer in zip(self.upsamples[::-1], self.decoder[::-1]):
-            out = up_layer(out)
+            out, kl = up_layer(out)
+            kl_sum += kl
+            # Only want to concatenate the Tensors here
             out = crop_and_cat(out, intermediate_outs[i])
-            out = dec_layer(out)
+            out, kl = dec_layer(out)
+            kl_sum += kl
             i -= 1
 
         #output
-        out = self.output(out)
-
-        return out
+        for layer in self.output:
+            if "Bayesian" in layer.__class__.__name__:
+                out, kl = layer(out)
+                kl_sum += kl
+            else:
+                out = layer(out)
+        
+        # Return both the output tensor and kl_sum
+        return out, kl_sum
 
     def forward_with_z(self, perturb_noise_std=None):
         if perturb_noise_std is None:
@@ -372,13 +384,15 @@ class BAYESIAN_RES_UNET(nn.Module):
         if self.causal_passive:
             return
 
-        self.output = nn.Sequential(
+        self.output = nn.ModuleList([
             BayesianUpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
             BayesianResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
             CausalityLayer(F=self.output_size),
             # PassivityLayer()
             nn.tanh()
-        )
+        ])
+
+        self.causal_passive = True
         
     @torch.no_grad()
     def set_z(self, latent_seed):
