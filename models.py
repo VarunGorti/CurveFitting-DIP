@@ -337,6 +337,11 @@ class BAYESIAN_RES_UNET(nn.Module):
                 BayesianOutConv(self.ngf[0], self.nc),
                 nn.Tanh()
             ])
+        
+        self.stdvs_output = nn.ModuleList([
+                BayesianOutConv(self.ngf[0], self.nc),
+                nn.ReLU()
+        ])
 
     def forward(self, x):
         #encode
@@ -363,16 +368,31 @@ class BAYESIAN_RES_UNET(nn.Module):
             kl_sum += kl
             i -= 1
 
+        # print("shape before the output layer: ", out.shape)
+        
+
+
+        vals_out = out
+        stdvs_out = out
         #output
         for layer in self.output:
             if "Bayesian" in layer.__class__.__name__:
-                out, kl = layer(out)
+                vals_out, kl = layer(vals_out)
                 kl_sum += kl
             else:
-                out = layer(out)
+                vals_out = layer(vals_out)
+
+
+        for layer in self.stdvs_output:
+            if "Bayesian" in layer.__class__.__name__:
+                stdvs_out, kl = layer(stdvs_out)
+                kl_sum += kl
+            else:
+                stdvs_out = layer(stdvs_out)
+            
         
         # Return both the output tensor and kl_sum
-        return out, kl_sum
+        return torch.concatenate([vals_out, stdvs_out], axis=0), kl_sum
 
     def forward_with_z(self, perturb_noise_std=None):
         if perturb_noise_std is None:

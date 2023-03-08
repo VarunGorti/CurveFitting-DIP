@@ -380,7 +380,7 @@ class Measurement_MSE_Loss(nn.Module):
                 
                 return torch.mean(rmse_per_chan)
             
-class KL_Loss(nn.Module):
+class BayesianLoss(nn.Module):
     """
     Given a signal x, observed measurements y, and observed indices kept_inds, 
         return the mse over the measurements of x vs true measurements y.
@@ -400,21 +400,31 @@ class KL_Loss(nn.Module):
         self.per_param = per_param
         self.reduction = reduction
 
-        if not self.per_param:
-            self.kl_loss = nn.KLDivLoss(reduction=self.reduction)
+        self.mse = Measurement_MSE_Loss(kept_inds, per_param, reduction)
+      
     
-    def forward(self, x, y):
+    def forward(self, x, y_interp):
+
+        x, stdvs = x[None, 0], x[None, 1]
+
+        # print(y_interp.shape)
+
+        # print(torch.exp(stdvs).shape)
+        # print(self.mse(x, y_interp[:, :, self.kept_inds]).shape)
+        # print((torch.exp(stdvs) * self.mse(x, y_interp[:, :, self.kept_inds])).shape)
+
+
         if not self.per_param:
-            return self.kl_loss(x[:, :, self.kept_inds], y)
+            return torch.mean(torch.exp(stdvs) * self.mse(x, y_interp[:, :, self.kept_inds]) - stdvs)
         
         else:
-            square_error = torch.square(x[:, :, self.kept_inds] - y) #[1, 2 * N_sparams, m]
+            bayesian_error = torch.mul(torch.exp(stdvs), torch.square(x - y_interp)) - stdvs #[1, 2 * N_sparams, m]
 
             if self.reduction == "mean":
-                mse_per_chan = torch.mean(square_error, dim=2) #[1, 2 * N_sparams]
-                rmse_per_chan = torch.sqrt(mse_per_chan) #[1, 2 * N_sparams]
+                loss_per_chan = torch.mean(bayesian_error, dim=2) #[1, 2 * N_sparams]
+                rmse_per_chan = torch.sqrt(loss_per_chan) #[1, 2 * N_sparams]
                 
-                return torch.mean(rmse_per_chan) 
+                return torch.mean(rmse_per_chan)
 
 
 class Smoothing_Loss(nn.Module):
