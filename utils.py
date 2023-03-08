@@ -415,7 +415,7 @@ class BayesianLoss(nn.Module):
 
 
         if not self.per_param:
-            return torch.mean(torch.exp(stdvs) * self.mse(x, y_interp[:, :, self.kept_inds]) - stdvs)
+            return torch.mean(torch.exp(stdvs) * self.mse(x, y_interp) - stdvs)
         
         else:
             bayesian_error = torch.mul(torch.exp(stdvs), torch.square(x - y_interp)) - stdvs #[1, 2 * N_sparams, m]

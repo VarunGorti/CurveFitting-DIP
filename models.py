@@ -370,8 +370,6 @@ class BAYESIAN_RES_UNET(nn.Module):
 
         # print("shape before the output layer: ", out.shape)
         
-
-
         vals_out = out
         stdvs_out = out
         #output
