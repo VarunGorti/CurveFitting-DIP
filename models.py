@@ -148,7 +148,7 @@ class RES_UNET(nn.Module):
             if l > (self.num_layers - 1) / 2:
                 if l == 0:
                     self.encoder.append(
-                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
+                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip, p_dropout=self.p_dropout)
                     )
                 else:
                     self.encoder.append(
@@ -163,7 +163,7 @@ class RES_UNET(nn.Module):
             else:
                 if l == 0:
                     self.encoder.append(
-                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip)
+                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip, p_dropout=self.p_dropout)
                     )
                 else:
                     self.encoder.append(
@@ -178,7 +178,6 @@ class RES_UNET(nn.Module):
 
         
         self.middle = nn.Sequential(
-            nn.Dropout2d(p=self.p_dropout),
             ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
         )
 
