@@ -177,17 +177,23 @@ class RES_UNET(nn.Module):
                 )
 
         
-        self.middle = ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
+        self.middle = nn.Sequential(
+            nn.Dropout2d(p=self.p_dropout),
+            ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
+        )
 
         if self.causal_passive:
             self.output = nn.Sequential(
+                # nn.Dropout2d(p=self.p_dropout),
                 UpConv(in_channels=self.ngf[0], out_channels=self.ngf[0], p_dropout=self.p_dropout),
                 ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip, p_dropout=self.p_dropout),
                 CausalityLayer(F=self.output_size),
-                PassivityLayer()
+                # PassivityLayer()
+                nn.Tanh()
             )
         else:
             self.output = nn.Sequential(
+                # nn.Dropout2d(p=self.p_dropout),
                 OutConv(self.ngf[0], self.nc),
                 nn.Tanh()
             )
@@ -231,7 +237,7 @@ class RES_UNET(nn.Module):
             ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
             CausalityLayer(F=self.output_size),
             # PassivityLayer()
-            nn.tanh()
+            nn.Tanh()
         )
         
     @torch.no_grad()

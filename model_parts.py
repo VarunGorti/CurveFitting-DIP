@@ -144,7 +144,7 @@ class ResidualConv(nn.Module):
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
                 nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                nn.Dropout(p=p_dropout),
+                # nn.Dropout2d(p=p_dropout),
                 nn.AvgPool1d(2, ceil_mode=True), 
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
@@ -154,7 +154,7 @@ class ResidualConv(nn.Module):
             if self.use_skip:
                 self.conv_skip = nn.Sequential(
                     nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
-                    nn.Dropout(p=p_dropout),
+                    # nn.Dropout2d(p=p_dropout),
                     nn.AvgPool1d(2, ceil_mode=True) 
                 )
 
@@ -188,7 +188,7 @@ class UpConv(nn.Module):
         super().__init__()
 
         self.up_conv = nn.Sequential(
-            nn.Dropout(p=p_dropout),
+            # nn.Dropout2d(p=p_dropout),
             nn.Upsample(scale_factor=2, mode='linear'),
             nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False) 
         )
