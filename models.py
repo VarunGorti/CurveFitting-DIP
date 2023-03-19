@@ -145,7 +145,7 @@ class RES_UNET(nn.Module):
         self.upsample_dropouts = nn.ModuleList()
 
         for l in range(self.num_layers - 1):
-            if l > (self.num_layers - 1) / 2:
+            if True:
                 if l == 0:
                     self.encoder.append(
                         InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip, p_dropout=self.p_dropout)

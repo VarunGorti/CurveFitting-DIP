@@ -149,7 +149,7 @@ class ResidualConv(nn.Module):
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
                 nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                # nn.Dropout2d(p=p_dropout)
+                nn.Dropout2d(p=p_dropout)
 
             )
 
@@ -169,7 +169,7 @@ class ResidualConv(nn.Module):
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
                 nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                nn.Dropout2d(p=p_dropout)
+                # nn.Dropout2d(p=p_dropout)
 
             )
 
