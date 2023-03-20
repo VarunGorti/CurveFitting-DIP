@@ -2,6 +2,8 @@ import skrf as rf
 import numpy as np
 import time
 import math
+import os
+import subprocess
 
 """
 Demo for using vectorfit.py
@@ -146,14 +148,17 @@ class VectorFitter:
         
         # Load the ground truth model. We'll use this
         # instead of simulating each requested frequency.
-        self.ground_truth = rf.Network(touchstone_file)
+        try:
+            self.ground_truth = rf.Network(touchstone_file)
+        except:
+            self.ground_truth = touchstone_file
     
     def _status_update(self, msg):
         if self.verbose:
             print(msg)
     
     @staticmethod
-    def _fill_fitted_network(frequencies, vector_fit):
+    def fill_fitted_network(frequencies, vector_fit):
         n_ports = vector_fit.network.s.shape[1]
         s = np.zeros((len(frequencies), n_ports, n_ports), dtype=complex)
         for p1 in range(n_ports):
@@ -229,11 +234,11 @@ class VectorFitter:
             
             # Get the fitted network at the sampled points
             self._status_update(f"  Filling sampled network.")
-            sampled_network_fit = VectorFitter._fill_fitted_network(frequency_sample_points_in_hz, vf)
+            sampled_network_fit = VectorFitter.fill_fitted_network(frequency_sample_points_in_hz, vf)
             
             # Get the fitted network at the full sweep points
             self._status_update(f"  Filling full sweep network.")
-            full_sweep_network_fit = VectorFitter._fill_fitted_network(self.ground_truth.f, vf)
+            full_sweep_network_fit = VectorFitter.fill_fitted_network(self.ground_truth.f, vf)
             
             # Compute the errors
             self._status_update(f"  Computing error.")
@@ -260,8 +265,101 @@ class VectorFitter:
                 break
         
         end_time = time.time()
-        self._status_update(f"Fit completed in {end_time - start_time}, using {n_evals}, resulting" +
+        self._status_update(f"Fit completed in {end_time - start_time}s, using {n_evals}, resulting" +
                             f" in a fit with {best_fit.n_poles} and error={best_fit.error_vs_sampled.error} vs samples" +
                             f" and error={best_fit.error_vs_ground_truth.error} vs ground truth.")
         return best_fit
+
+def _delete_files(files):
+    for file in files:
+        try:
+            os.remove(file)
+        except OSError:
+            pass
+
+
+class StaticVectorFit:
+
+    @staticmethod
+    def sample_network(source_file, frequency_sample_points_in_hz):
+        full_network = rf.Network(source_file)
+        frequency_instance = rf.Frequency.from_f(frequency_sample_points_in_hz, unit="Hz")
+        new_network = full_network.interpolate(frequency_instance)
+        return new_network
+    
+    @staticmethod
+    def save_sampled_network(source_file, save_file, frequency_sample_points_in_hz):
+        sampled = SiemensVectorFit.sample_network(source_file, frequency_sample_points_in_hz)
+        _, src_ext = os.path.splitext(source_file)
+        base, _ = os.path.splitext(save_file)
+        save_file_corrected = base + src_ext
+        _delete_files([save_file_corrected])
+        sampled.write_touchstone(save_file_corrected)
+        return save_file_corrected
+
+class ScikitVectorFit(StaticVectorFit):
+    
+    @staticmethod
+    def vector_fit(observations_s_parameters_file, desired_frequency_points):
+        # Create a vector fit model using the saved data
+        fitter = VectorFitter(observations_s_parameters_file)
+        vf = fitter.vector_fit("SciKit Fit", fitter.ground_truth.f)
+        
+        # Interpret the vf model at the requested points
+        fitted_network = VectorFitter.fill_fitted_network(desired_frequency_points, vf.vector_fit_model)
+        
+        # Return the fitted network
+        return fitted_network
+    
+    @staticmethod
+    def vector_fit_samples(ground_truth_s_parameters_file, sample_frequency_points, desired_frequency_points,
+                           observations_file="observations"):
+        obs = StaticVectorFit.save_sampled_network(ground_truth_s_parameters_file, observations_file, sample_frequency_points)
+        return ScikitVectorFit.vector_fit(obs, desired_frequency_points)
+
+
+class SiemensVectorFit(StaticVectorFit):
+        
+    @staticmethod
+    def _write_solver_options(desired_frequency_points, filename):
+        with open(filename, 'w') as fout:
+            fout.write('<SolverOptions>\n')
+            fout.write('  <Header Version="6.13.0" />\n')
+            fout.write('  <Frequency  Type="SCATTERED" >\n')
+            for frequency in desired_frequency_points:
+                fout.write(f'    <Point Value="{frequency}"/>\n')
+            fout.write('    <Options FastSweep="Yes"  />\n')
+            fout.write('    <Sliders AFSConvergenceSlider="0" AFSMagnifySlider="0" AFSIntervalErrorSlider="0" />\n')
+            fout.write('    <Advanced MinSplineFreqPointCnt="8" Order="4" Threshold="0.001" MaxAdaptiveSweepPoints="500" />\n')
+            fout.write('  </Frequency>\n')
+            fout.write('</SolverOptions>\n')
+    
+    @staticmethod
+    def vector_fit(observations_s_parameters_file, desired_frequency_points, path_to_hlasconsole, optionsfile="SolverOptions.opt"):
+        
+        base, ext = os.path.splitext(observations_s_parameters_file)
+        
+        # Delete the old files
+        _delete_files([f"Fitter_Fit_{base}" + ext,
+                       f"Fitter_HLAS_{base}" + ext,
+                       f"Fitter_HLAS2_{base}" + ext,
+                       f"Fitter_Spline_{base}" + ext,
+                       optionsfile])
+                       
+        # Create a solver options file using these frequency points
+        SiemensVectorFit._write_solver_options(desired_frequency_points, optionsfile)
+        
+        # Run the Siemens/HLAS fitter
+        executable = os.path.join(path_to_hlasconsole, "hlasConsole")
+        subprocess.run([executable, "-tool", "test", "testvf", observations_s_parameters_file, optionsfile])
+        
+        # Return the fitted network
+        return rf.Network(f"Fitter_HLAS_{base}" + ext)
+    
+    @staticmethod
+    def vector_fit_samples(ground_truth_s_parameters_file, sample_frequency_points,
+                           desired_frequency_points, path_to_hlasconsole,
+                           observations_file="observations", optionsfile="SolverOptions.opt"):
+        obs = StaticVectorFit.save_sampled_network(ground_truth_s_parameters_file, observations_file, sample_frequency_points)
+        return SiemensVectorFit.vector_fit(obs, desired_frequency_points, path_to_hlasconsole, optionsfile)
 
