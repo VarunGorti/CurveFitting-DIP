@@ -468,7 +468,7 @@ class Measurement_MSE_Loss(nn.Module):
 
 class Smoothing_Loss(nn.Module):
     """
-    Loss function that penalizes second-order differences in a time series.
+    Loss function that penalizes nth-order differences in a time series.
 
     Args:
         per_param: Whether to reduce the loss for each S-param individually
