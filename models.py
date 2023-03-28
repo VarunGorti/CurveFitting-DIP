@@ -163,7 +163,7 @@ class RES_UNET(nn.Module):
             else:
                 if l == 0:
                     self.encoder.append(
-                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip, p_dropout=self.p_dropout)
+                        InputResidualConv(in_channels=self.nc, out_channels=self.ngf[0], kernel_size=self.kernel_size[0], use_skip = self.use_skip, p_dropout=0)
                     )
                 else:
                     self.encoder.append(
