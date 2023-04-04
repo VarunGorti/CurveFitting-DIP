@@ -188,13 +188,13 @@ class RES_UNET(nn.Module):
                 ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip, p_dropout=self.p_dropout),
                 CausalityLayer(F=self.output_size),
                 # PassivityLayer()
-                nn.Tanh()
+                # nn.Tanh()
             )
         else:
             self.output = nn.Sequential(
                 # nn.Dropout2d(p=self.p_dropout),
                 OutConv(self.ngf[0], self.nc),
-                nn.Tanh()
+                # nn.Tanh()
             )
 
     def forward(self, x):
