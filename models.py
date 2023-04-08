@@ -81,7 +81,7 @@ class ENC_DEC(nn.Module):
         self.z += torch.randn_like(self.z) * std
 
 class RES_UNET(nn.Module):
-    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None, use_skip=True, causal_passive=False):
+    def __init__(self, bs, nz, ngf=64, output_size=1024, nc=1, optimize_z=False, kernel_size=3, num_layers=None, use_skip=True, causal_passive=False, p_dropout=0.0):
         """
         Args:
             bs: the batch size
@@ -111,6 +111,8 @@ class RES_UNET(nn.Module):
         self.num_layers = num_layers
         self.use_skip = use_skip
         self.causal_passive = causal_passive
+        self.p_dropout = p_dropout
+        assert self.p_dropout >= 0
         
         #NOTE (num_layers - 1) is the number of resolution scales (i.e. number of up/down samples)
         #e.g. for num_layers = 5, there are 4 scales - divides original resolution by 2^4 = 16  
@@ -147,21 +149,21 @@ class RES_UNET(nn.Module):
                 )
             else:
                 self.encoder.append(
-                    ResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=True, use_skip = self.use_skip)
+                    ResidualConv(in_channels=self.ngf[l-1], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
                 )
             self.decoder.append(
-                ResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=False, use_skip = self.use_skip)
+                ResidualConv(in_channels=2*self.ngf[l], out_channels=self.ngf[l], kernel_size=self.kernel_size[l], downsample=False, use_skip = self.use_skip, p_dropout=self.p_dropout)
             )
             self.upsamples.append(
                 UpConv(in_channels=self.ngf[l+1], out_channels=self.ngf[l])
             )
         
-        self.middle = ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip)
+        self.middle = ResidualConv(in_channels=self.ngf[-2], out_channels=self.ngf[-1], kernel_size=self.kernel_size[-1], downsample=True, use_skip = self.use_skip, p_dropout=self.p_dropout)
 
         if self.causal_passive:
             self.output = nn.Sequential(
                 UpConv(in_channels=self.ngf[0], out_channels=self.ngf[0]),
-                ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip),
+                ResidualConv(in_channels=self.ngf[0], out_channels=self.nc//2, mid_channels=self.nc, kernel_size=1, downsample=False, use_skip=self.use_skip, p_dropout=self.p_dropout),
                 CausalityLayer(F=self.output_size),
                 # PassivityLayer()
             )
