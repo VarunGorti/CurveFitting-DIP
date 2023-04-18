@@ -149,6 +149,25 @@ def get_network_from_file(root_pth, chip_num):
     
     return out_dict
 
+def network_to_sparams(network):
+    """
+    Converts a given Sk-RF network object into a [1, 2*N_unique-sparams, N_freqs] torch tensor.
+    
+    Args:
+        network: sk-rf network object.
+    
+    Returns:
+        [1, 2*N_unique-sparams, N_freqs] torch tensor. Channel dimenson has reals
+            on the even indices and their respective imag's on the odd indices. 
+    """
+    re_mat = network.s.real
+    im_mat = network.s.imag
+    out_mat = np.stack((re_mat, im_mat), axis=-1)
+
+    out_sparams = matrix_to_sparams(out_mat)
+
+    return torch.from_numpy(out_sparams).view(-1, out_sparams.shape[-1]).unsqueeze(0)
+
 def grab_chip_data(root_pth, chip_num):
     """
     Given a root path and a chip number, grab all the relevant info for a chip.
