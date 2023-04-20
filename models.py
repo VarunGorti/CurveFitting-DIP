@@ -307,7 +307,7 @@ class RESNET_BACKBONE(nn.Module):
         return clone_net
     
 class RESNET_HEAD(nn.Module):
-    def __init__(self, nz, ngf_in_out, nc, output_size, kernel_size, causal, passive, k=1, new_causality=False):
+    def __init__(self, nz, ngf_in_out, nc, kernel_size, causal, passive, k=1, new_causality=False):
         """
         Acts as the input and output layers for a Resnet generator.
 
@@ -315,7 +315,7 @@ class RESNET_HEAD(nn.Module):
             nz: the channel depth of the initial random seed.
             ngf_in_out: number of filters in the input and output layers. should match the backbone. 
             nc: number of channels in the output.
-            output_size: length of the output.
+            output_size: length of the output. #NOTE deprecated
             kernel_size: length of the convolutional kernel in the input and output.
             causal: if True, adds a causality layer at the end of the network.
             passive: if True, adds a passivity layer at the end of the network.
@@ -329,7 +329,7 @@ class RESNET_HEAD(nn.Module):
         self.nz = nz
         self.ngf_in_out = ngf_in_out
         self.nc = nc
-        self.output_size = output_size
+        # self.output_size = output_size
         self.kernel_size = kernel_size
         self.causal = causal
         self.passive = passive
@@ -354,7 +354,7 @@ class RESNET_HEAD(nn.Module):
                                 kernel_size=self.kernel_size, 
                                 downsample=False, 
                                 use_skip=False),
-                    NewCausalityLayer(F=self.output_size, K=self.k)
+                    NewCausalityLayer(K=self.k)
                 )
             else:
                 output_start = nn.Sequential(
@@ -365,7 +365,7 @@ class RESNET_HEAD(nn.Module):
                                 kernel_size=self.kernel_size, 
                                 downsample=False, 
                                 use_skip=False),
-                    CausalityLayer(F=self.output_size, K=self.k)
+                    CausalityLayer(K=self.k)
                 )
         else:
             output_start = OutConv(self.ngf_in_out, self.nc)

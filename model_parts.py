@@ -261,17 +261,21 @@ class CausalityLayer(nn.Module):
         return output
     
 class NewCausalityLayer(nn.Module):
-    def __init__(self, F, K=1):
+    def __init__(self, K=1):
         super().__init__()
 
-        self.F = F #number of output frequencies
+        # self.F = F #number of output frequencies
         self.K = K
     
-    def forward(self, x):
+    def forward(self, x, F=None):
         #x is the extrapolated real part of the frequency response
         #L = FM, where M is the extrapolation factor
         #C is the number of unique s-parameters
         N, C, L = x.shape
+    
+        #If output size is not specific, assume upsampling factor is 2
+        if F is None:
+            F = L//2
         
         #(1) Make the double-sided frequency spectrum
         #output is real and has size [N, C, 2L-1 = 2FM - 1]
@@ -293,7 +297,7 @@ class NewCausalityLayer(nn.Module):
         #(4) Take the IFFT and truncate
         #output is complex and has shape [N, C, FK]
         IFFT_analytic = torch.fft.ifft(analytic_x)
-        truncated_IFFT_analytic = IFFT_analytic[..., 0:(self.K*self.F)]
+        truncated_IFFT_analytic = IFFT_analytic[..., 0:(self.K*F)]
 
         #(5) Split the signal into the real and imaginary components and return
         #output is real and has the shape [N, C, FK]
