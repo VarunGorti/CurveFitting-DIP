@@ -94,7 +94,7 @@ class InputResidualConv(nn.Module):
     Path 2: 1x1 Conv  
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, use_skip=True):
+    def __init__(self, in_channels, out_channels, kernel_size=3, use_skip=True, p_dropout=0.0):
         super().__init__()
 
         self.use_skip = use_skip
@@ -105,6 +105,7 @@ class InputResidualConv(nn.Module):
             nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
             nn.BatchNorm1d(out_channels, affine=False),
             nn.LeakyReLU(),
+            nn.Dropout2d(p=p_dropout),
             nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False)
         )
 
@@ -143,12 +144,14 @@ class ResidualConv(nn.Module):
             self.conv_block = nn.Sequential(
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
+                nn.Dropout2d(p=p_dropout),
                 nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
                 nn.AvgPool1d(2, ceil_mode=True), 
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
+                nn.Dropout2d(p=p_dropout),
                 nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                nn.Dropout2d(p=p_dropout)
+                # nn.Dropout2d(p=p_dropout)
             )
 
             if self.use_skip:
@@ -162,11 +165,12 @@ class ResidualConv(nn.Module):
             self.conv_block = nn.Sequential(
                 nn.BatchNorm1d(in_channels, affine=False),
                 nn.LeakyReLU(),
+                nn.Dropout2d(p=p_dropout),
                 nn.Conv1d(in_channels, mid_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
                 nn.BatchNorm1d(mid_channels, affine=False),
                 nn.LeakyReLU(),
+                nn.Dropout2d(p=p_dropout),
                 nn.Conv1d(mid_channels, out_channels, kernel_size=kernel_size, padding=pad, padding_mode='reflect', bias=False),
-                nn.Dropout2d(p=p_dropout)
             )
 
             if self.use_skip:
@@ -186,7 +190,7 @@ class UpConv(nn.Module):
      Linear Upsampling -> 1x1 conv
     """
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, p_dropout=0.0):
         super().__init__()
 
         self.up_conv = nn.Sequential(
