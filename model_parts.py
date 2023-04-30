@@ -215,15 +215,19 @@ class CausalityLayer(nn.Module):
     Has no trainable parameters.
     """
 
-    def __init__(self, F, K=1):
+    def __init__(self, K=1):
         super().__init__()
 
-        self.F = F
+        # self.F = F
         self.K = K
     
-    def forward(self, x):
+    def forward(self, x, F=None):
         #L = FM + 1
         N, C, L = x.shape
+
+        #If output size is not specific, assume upsampling factor is 2
+        if F is None:
+            F = (L-1)//2
 
         #(1) make the double-sided frequency spectrum
         #output is real and has shape [N, C, 2L-1 = 2FM + 1]
