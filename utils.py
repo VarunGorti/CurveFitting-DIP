@@ -4,6 +4,7 @@ import random
 import numpy as np
 import os
 import skrf
+import matplotlib.pyplot as plt
 
 def set_all_seeds(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -165,11 +166,11 @@ def network_to_sparams(network, reciprocity_eps = 1e-6):
             on the even indices and their respective imag's on the odd indices. 
     """
     #(1) check if the network is reciprocal
-    reciprocity = skrf.network.reciprocity(network.s)
+    # reciprocity = skrf.network.reciprocity(network.s)
 
-    IS_RECIPROCAL = False
-    if np.sum(np.abs(reciprocity)) < reciprocity_eps:
-        IS_RECIPROCAL = True
+    # IS_RECIPROCAL = False
+    # if np.sum(np.abs(reciprocity)) < reciprocity_eps:
+    #     IS_RECIPROCAL = True
     
     #(2) convert the (N_FREQS, N_PORTS, N_PORTS) complex s-param matrix to 
     # (N_FREQS, N_PORTS, N_PORTS, RE/IM) real-valued matrix
@@ -177,16 +178,16 @@ def network_to_sparams(network, reciprocity_eps = 1e-6):
     im_mat = network.s.imag
     out_mat = np.stack((re_mat, im_mat), axis=-1)
 
-    #(3) grab the unique or all s-parameters and return
-    if IS_RECIPROCAL:
-        out_sparams = matrix_to_sparams(out_mat)
+    # #(3) grab the unique or all s-parameters and return
+    # if IS_RECIPROCAL:
+    #     out_sparams = matrix_to_sparams(out_mat)
 
-        return torch.from_numpy(out_sparams).view(-1, out_sparams.shape[-1]).unsqueeze(0).type(torch.float32)
-    else:
-        out_mat = out_mat.reshape((out_mat.shape[0], -1, out_mat.shape[-1])) #[FREQ, N_PORT^2, RE/IM]
-        out_mat = out_mat.reshape((out_mat.shape[0], -1)).transpose() #[Re/im Sparams, FREQ]
-        
-        return torch.from_numpy(out_mat).unsqueeze(0).type(torch.float32)
+    #     return torch.from_numpy(out_sparams).view(-1, out_sparams.shape[-1]).unsqueeze(0).type(torch.float32)
+    # else:
+    out_mat = out_mat.reshape((out_mat.shape[0], -1, out_mat.shape[-1])) #[FREQ, N_PORT^2, RE/IM]
+    out_mat = out_mat.reshape((out_mat.shape[0], -1)).transpose() #[Re/im Sparams, FREQ]
+    
+    return torch.from_numpy(out_mat).unsqueeze(0).type(torch.float32)
 
 def grab_chip_data(root_pth, chip_num):
     """
@@ -462,6 +463,41 @@ def sparams_to_sing_vals(sparams_data):
     #torch.complex.... makes a [num_freqs, num_ports, num_ports] tensor
     #must have compute_UV = True to use gradients
     return torch.linalg.svd(torch.complex(A[..., 0], A[..., 1]))[1]
+
+def plot_mags(sparams_list, freqs=None, chip_labels=None, not_reciprocal=False, plot_subset_list=None, ylims=False):
+    mag_list = [sparams_to_mag(sparam) for sparam in sparams_list]
+    
+    num_ports = (-1 + np.sqrt(8*mag_list[0].shape[1] + 1)) // 2
+    num_ports = int(num_ports)
+    if not_reciprocal:
+        num_ports = int(np.sqrt(mag_list[0].shape[1]))
+    
+    x = freqs if freqs is not None else [np.arange(mag_list[0].shape[-1])]*len(mag_list)
+    labels = chip_labels if chip_labels is not None else np.arange(len(mag_list))
+    
+    if not_reciprocal:
+        sparam_str_list = [str(s_idx//num_ports) + str(s_idx%num_ports) for s_idx in range(mag_list[0].shape[1])]
+    else:
+        sparam_str_list = []
+        for i in range(num_ports):
+            for j in range(i+1):
+                sparam_str_list.append(str(i) + str(j))
+    
+    plot_chips = plot_subset_list if plot_subset_list is not None else np.arange(len(mag_list))
+    
+    fig, axs = plt.subplots((mag_list[0].shape[1] + 1) // 2, 2, figsize=(20,15))
+    
+    for s_idx in range(mag_list[0].shape[1]):
+        if s_idx >= mag_list[0].shape[1]:
+            break
+        for chip_idx in plot_chips:
+            axs[s_idx//2, s_idx%2].plot(x[chip_idx], mag_list[chip_idx][0, s_idx], label=str(labels[chip_idx]))
+        axs[s_idx//2, s_idx%2].set_title(sparam_str_list[s_idx])
+        axs[s_idx//2, s_idx%2].legend()
+        if ylims:
+            axs[s_idx//2, s_idx%2].set_ylim(0, 1)
+        
+    fig.tight_layout()
 
 class Measurement_MSE_Loss(nn.Module):
     """
